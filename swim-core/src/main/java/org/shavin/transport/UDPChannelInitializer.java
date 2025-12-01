@@ -1,0 +1,43 @@
+package org.shavin.transport;
+
+import io.netty.channel.ChannelPipeline;
+import io.netty.channel.socket.DatagramChannel;
+import io.netty.util.concurrent.DefaultEventExecutorGroup;
+import io.netty.util.concurrent.EventExecutorGroup;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+public class UDPChannelInitializer {
+    private final static Logger log = LogManager.getLogger(UDPChannelInitializer.class);
+
+    private final EventExecutorGroup eventExecutorGroup;
+    private final MessageHandler handler;
+    private UDPPacketHandler packetHandler;
+
+    public UDPChannelInitializer(MessageHandler handler) {
+        eventExecutorGroup = new DefaultEventExecutorGroup(2);
+        this.handler = handler;
+    }
+
+    public io.netty.channel.ChannelInitializer<DatagramChannel> initializer() {
+
+        return new io.netty.channel.ChannelInitializer<DatagramChannel>() {
+            @Override
+            protected void initChannel(DatagramChannel datagramChannel) throws Exception {
+                ChannelPipeline pipeline = datagramChannel.pipeline();
+                packetHandler = new UDPPacketHandler(handler);
+
+                pipeline.addLast(eventExecutorGroup, "handler", packetHandler);
+            }
+        };
+    }
+
+    public void shutdown() {
+        try {
+            eventExecutorGroup.shutdownGracefully().awaitUninterruptibly();
+            packetHandler.shutdown();
+        } catch (Exception e) {
+            log.error("Failed to shutdown event executor group", e);
+        }
+    }
+}

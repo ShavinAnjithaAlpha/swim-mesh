@@ -1,0 +1,59 @@
+package org.shavin.messages;
+
+import io.netty.buffer.ByteBuf;
+
+import java.io.IOException;
+
+public class BaseGossipMessage implements IMessage {
+
+    private final int sourceNodeId;
+    private final int destinationNodeId;
+
+    public BaseGossipMessage(int sourceNodeId, int destinationNodeId) {
+        this.sourceNodeId = sourceNodeId;
+        this.destinationNodeId = destinationNodeId;
+    }
+
+    public int sourceNodeId() {
+        return sourceNodeId;
+    }
+
+    public int destinationNodeId() {
+        return destinationNodeId;
+    }
+
+    @Override
+    public IGenericMessageSerializer<?, ?> serializer() {
+        return Serializer.INSTANCE;
+    }
+
+    @Override
+    public Class<? extends IMessage> getType() {
+        return BaseGossipMessage.class;
+    }
+
+    public static class Serializer implements IGenericMessageSerializer<BaseGossipMessage, BaseGossipMessage> {
+
+        public static final Serializer INSTANCE = new Serializer();
+
+        @Override
+        public void serialize(BaseGossipMessage gossipBaseMessage, ByteBuf out) throws IOException {
+            out.writeInt(gossipBaseMessage.sourceNodeId);
+            out.writeInt(gossipBaseMessage.destinationNodeId);
+        }
+
+        @Override
+        public BaseGossipMessage deserialize(ByteBuf in) throws IOException {
+            int sourceNodeId = in.readInt();
+            int destinationNodeId = in.readInt();
+
+            return new BaseGossipMessage(sourceNodeId, destinationNodeId);
+        }
+
+        @Override
+        public long serializedSize(BaseGossipMessage gossipBaseMessage) {
+            return Integer.BYTES * 2;
+        }
+    }
+
+}
