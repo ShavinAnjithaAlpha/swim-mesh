@@ -8,6 +8,7 @@ import org.shavin.GossipCluster;
 import org.shavin.member.MemberNode;
 import org.shavin.event.ClusterEventListener;
 import org.shavin.member.MemberSelection;
+import org.shavin.member.MembershipEvent;
 import org.shavin.member.RoundRobinMemberSelector;
 import org.shavin.messages.*;
 import org.shavin.transport.NettyUdpTransportLayer;
@@ -18,10 +19,9 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
+import java.util.Queue;
+import java.util.Set;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class StandardGossipClusterImpl implements GossipCluster {
@@ -36,11 +36,14 @@ public class StandardGossipClusterImpl implements GossipCluster {
 
     private final int nodeId;
     private final int port;
+    private final String[] seeds;
 
     private State state = State.NOT_STARTED;
 
     private final List<MemberNode> members = new CopyOnWriteArrayList<>();
+    private final Set<Integer> knownMemberIds = ConcurrentHashMap.newKeySet();
     private final List<ClusterEventListener> listeners = new CopyOnWriteArrayList<>();
+    private final Queue<MembershipEvent> membershipEventBuffer = new ConcurrentLinkedQueue<>();
 
     private final TransportLayer transportLayer;
     private final MemberSelection memberSelection;
@@ -52,16 +55,13 @@ public class StandardGossipClusterImpl implements GossipCluster {
     private final Map<Long, Long> pendingAcks = new ConcurrentHashMap<>();
     private final Map<Long, Long> indirectPendingAcks = new ConcurrentHashMap<>();
 
-    public StandardGossipClusterImpl(int nodeId, int port) {
+    public StandardGossipClusterImpl(int nodeId, int port, String[] seeds) {
         this.nodeId = nodeId;
         this.port = port;
+        this.seeds = seeds;
+
         this.transportLayer = new NettyUdpTransportLayer(UDPTransportConfig.withDefaults());
         this.memberSelection = new RoundRobinMemberSelector(members, nodeId);
-    }
-
-    @Override
-    public void addMember(MemberNode memberNode) {
-        members.add(memberNode);
     }
 
     @Override
@@ -84,11 +84,30 @@ public class StandardGossipClusterImpl implements GossipCluster {
         // start the transport layer
         this.transportLayer.start(this.port, this::handlePacket);
 
+        // start the seeding process
+        seedNodes();
+
         log.info("Starting SWIM protocol execution");
         // start the scheduler threads at a fixed rate
         scheduledExecutorService.scheduleAtFixedRate(this::executeSWIMProtocol, 1000, 1000, java.util.concurrent.TimeUnit.MILLISECONDS);
 
         log.info("successfully started the gossip cluster at nodeId: " + nodeId);
+    }
+
+    private void seedNodes() {
+        for (String seed : seeds) {
+            String[] seedParts = seed.split(":");
+            InetSocketAddress seedAddress = new InetSocketAddress(seedParts[0], Integer.parseInt(seedParts[1]));
+
+            // send a seed ping message to this seed node to bootstrap the cluster
+            Message seedPingMessage = PingAckMessageBuilder.seedPingMessages(nodeId, sequenceGenerator.incrementAndGet());
+            try {
+                byte[] bytes = messageToBytes(seedPingMessage);
+                transportLayer.send(seedAddress, bytes);
+            } catch (IOException exception) {
+                log.error(exception.getMessage(), exception);
+            }
+        }
     }
 
     private void handlePacket(byte[] data, InetSocketAddress sender) {
@@ -103,13 +122,27 @@ public class StandardGossipClusterImpl implements GossipCluster {
             switch (message.header().type()) {
                 case PING -> {
                     // send an ACK message back to the sender of the ping message
-                    PingMessage pingMessage = (PingMessage) message.payload();
-                    sendAck(pingMessage);
+                    PingAckMessage pingMessage = (PingAckMessage) message.payload();
+                    sendAck(pingMessage, sender);
                     break;
                 }
 
                 case ACK -> {
-                    PingMessage ackPayload = (PingMessage) message.payload();
+                    PingAckMessage ackPayload = (PingAckMessage) message.payload();
+                    // check if the source node is known or not previous
+                    if (!knownMemberIds.contains(ackPayload.sourceNodeId())) {
+                        // if not known, add it to the member list
+                        members.add(new MemberNode(ackPayload.sourceNodeId(), sender, MemberNode.MemberStatus.UP));
+                        knownMemberIds.add(ackPayload.sourceNodeId());
+
+                        log.info("Learned about a new member node with id: " + ackPayload.sourceNodeId() + " from the ACK message from " + sender.getHostString() + ":" + sender.getPort() + ".");
+
+                        // adds the JOIN event of the source node to the membership event buffer
+                        membershipEventBuffer.add(new MembershipEvent(MembershipEvent.Type.JOIN,
+                                ackPayload.sourceNodeId(),
+                                sender.getAddress().getHostAddress(),
+                                sender.getPort()));
+                    }
                     // remove the ping message from the pending acks map if it exists
                     pendingAcks.remove(ackPayload.sequenceNumber());
                     break;
@@ -188,22 +221,32 @@ public class StandardGossipClusterImpl implements GossipCluster {
         }
     }
 
-    private void sendAck(PingMessage pingMessage) {
-        // get the member node from the member list that matches the sender id of the ping message
-        MemberNode senderNode = members.stream().filter(member -> member.id() == pingMessage.sourceNodeId()).findFirst().orElse(null);
-        if (senderNode == null) {
-            return;
-        }
-
+    private void sendAck(PingAckMessage pingMessage, InetSocketAddress senderAddress) {
         // create an appropriate ack message from the ping message
-        Message replyAckMessage = PingAckMessageBuilder.pingAckMessageForNode(pingMessage);
+        Message replyAckMessage;
+        if (pingMessage.destinationNodeId() == PingAckMessage.NULL_DESTINATION_ID) { // handle if destination node id is null // SEED PING
+            replyAckMessage = PingAckMessageBuilder.pingAckMessageForNode(nodeId, pingMessage.sourceNodeId(), pingMessage.sequenceNumber());
+
+            // Add the source member node to the member list
+            members.add(new MemberNode(pingMessage.sourceNodeId(), senderAddress, MemberNode.MemberStatus.UP));
+            knownMemberIds.add(pingMessage.sourceNodeId());
+
+            log.info("Learned about a new member node with id: " + pingMessage.sourceNodeId() + " from the seed ping message from " + senderAddress.getHostString() + ":" + senderAddress.getPort() + ".");
+
+            membershipEventBuffer.add(new MembershipEvent(MembershipEvent.Type.JOIN,
+                    pingMessage.sourceNodeId(),
+                    senderAddress.getHostString(),
+                    senderAddress.getPort()));
+        } else {
+            replyAckMessage = PingAckMessageBuilder.pingAckMessageForNode(pingMessage);
+        }
         try {
             // serialize the message into a byte array
             byte[] bytes = messageToBytes(replyAckMessage);
             // send it to the transport layer
-            transportLayer.send(senderNode.address(), bytes);
+            transportLayer.send(senderAddress, bytes);
 
-            log.info("Sent ACK message to " + senderNode.id() + " for ping message with sequence number " + pingMessage.sequenceNumber());
+            log.info("Sent ACK message to " + pingMessage.sourceNodeId() + " for ping message with sequence number " + pingMessage.sequenceNumber());
         } catch (IOException exception) {
             log.error(exception.getMessage(), exception);
         }
@@ -229,6 +272,8 @@ public class StandardGossipClusterImpl implements GossipCluster {
 
     private void executeSWIMProtocol() {
         if (!(this.state == State.STARTED) || members.isEmpty()) {
+            // again trigger a seeding process if the cluster is not started or the member list is empty
+            seedNodes();
             return;
         }
         // selects a member from the list of members based on the member selection strategy
@@ -238,7 +283,7 @@ public class StandardGossipClusterImpl implements GossipCluster {
         long sequenceNumber = sequenceGenerator.incrementAndGet();
         // send a PING message to that member node
         Message pingMessage = PingAckMessageBuilder.pingMessageForNode(nodeId, selectedNode.id(), sequenceNumber);
-        PingMessage payload = (PingMessage) pingMessage.payload();
+        PingAckMessage payload = (PingAckMessage) pingMessage.payload();
 
         log.info("Sending PING message to " + selectedNode.id() + " with sequence number " + payload.sequenceNumber());
         try {
@@ -278,8 +323,7 @@ public class StandardGossipClusterImpl implements GossipCluster {
             targetNode.setStatus(MemberNode.MemberStatus.SUSPICIOUS);
 
             // get another k nodes from the member list for PING REQUEST messages
-            // TODO: // implements the logic for selecting healthy nodes for ping requests
-            List<MemberNode> selectedMemberNodesForPingRequests = members.subList(0, Math.min(members.size(), 3));
+            List<MemberNode> selectedMemberNodesForPingRequests = getHealthyNodes(3);
 
             // get the next request id for the ping request message
             long requestId = requestIdGenerator.incrementAndGet();
@@ -294,6 +338,14 @@ public class StandardGossipClusterImpl implements GossipCluster {
             scheduledExecutorService.schedule(() -> this.checkIndirectAck(targetNode, requestId),
                     DEFAULT_INDIRECT_PING_REQUEST_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS);
         }
+    }
+
+    private List<MemberNode> getHealthyNodes(int count) {
+        // randomly get a number of healthy nodes from the member nodes
+        // filter out the healthy nodes
+        return members.stream().filter(memberNode -> {
+            return memberNode.isHealthy() && memberNode.id() != nodeId;
+        }).limit(count).toList();
     }
 
     private void sendPingRequestMessages(MemberNode senderNode, MemberNode targetNode, long requestId) {

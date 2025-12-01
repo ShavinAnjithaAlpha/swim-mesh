@@ -4,16 +4,19 @@ import io.netty.buffer.ByteBuf;
 
 import java.io.IOException;
 
-public class PingMessage extends BaseGossipMessage implements IMessage {
+public class PingAckMessage extends BaseGossipMessage implements IMessage {
+
+    public static final int NULL_DESTINATION_ID = -1;
+    public static final int NULL_SOURCE_ID = -1;
 
     private final long sequenceNumber;
 
-    public PingMessage(int sourceNodeId, int destinationNodeId, long sequenceNumber) {
+    public PingAckMessage(int sourceNodeId, int destinationNodeId, long sequenceNumber) {
         super(sourceNodeId, destinationNodeId);
         this.sequenceNumber = sequenceNumber;
     }
 
-    public PingMessage(BaseGossipMessage baseGossipMessage, long sequenceNumber) {
+    public PingAckMessage(BaseGossipMessage baseGossipMessage, long sequenceNumber) {
         this(baseGossipMessage.sourceNodeId(), baseGossipMessage.destinationNodeId(), sequenceNumber);
     }
 
@@ -23,7 +26,7 @@ public class PingMessage extends BaseGossipMessage implements IMessage {
 
     @Override
     public Class<? extends IMessage> getType() {
-        return PingMessage.class;
+        return PingAckMessage.class;
     }
 
     @Override
@@ -31,26 +34,26 @@ public class PingMessage extends BaseGossipMessage implements IMessage {
         return Serializer.INSTANCE;
     }
 
-    public static class Serializer implements IGenericMessageSerializer<PingMessage, PingMessage> {
+    public static class Serializer implements IGenericMessageSerializer<PingAckMessage, PingAckMessage> {
 
         public static final Serializer INSTANCE = new Serializer();
 
         @Override
-        public void serialize(PingMessage pingMessage, ByteBuf out) throws IOException {
+        public void serialize(PingAckMessage pingMessage, ByteBuf out) throws IOException {
             BaseGossipMessage.Serializer.INSTANCE.serialize(pingMessage, out);
             out.writeLong(pingMessage.sequenceNumber);
         }
 
         @Override
-        public PingMessage deserialize(ByteBuf in) throws IOException {
+        public PingAckMessage deserialize(ByteBuf in) throws IOException {
             BaseGossipMessage base = BaseGossipMessage.Serializer.INSTANCE.deserialize(in);
             long sequenceNumber = in.readLong();
 
-            return new PingMessage(base, sequenceNumber);
+            return new PingAckMessage(base, sequenceNumber);
         }
 
         @Override
-        public long serializedSize(PingMessage pingMessage) {
+        public long serializedSize(PingAckMessage pingMessage) {
             return BaseGossipMessage.Serializer.INSTANCE.serializedSize(pingMessage) + Long.BYTES;
         }
     }

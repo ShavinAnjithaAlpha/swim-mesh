@@ -5,12 +5,12 @@ import io.netty.buffer.ByteBuf;
 import java.io.IOException;
 
 public enum MessageType {
-    PING((short) 1, PingMessage.Serializer.INSTANCE),
-    ACK((short) 2, PingMessage.Serializer.INSTANCE),
+    PING((short) 1, PingAckMessage.Serializer.INSTANCE),
+    ACK((short) 2, PingAckMessage.Serializer.INSTANCE),
     PING_REQ((short) 3, PingRequestMessage.Serializer.INSTANCE),
     INDIRECT_PING((short) 4, IndirectPingAckMessage.Serializer.INSTANCE),
     INDIRECT_ACK((short) 5, IndirectPingAckMessage.Serializer.INSTANCE);
-//    NODE_STATUS((short) 6, PingMessage.Serializer.INSTANCE),;
+//    NODE_STATUS((short) 6, PingAckMessage.Serializer.INSTANCE),;
 
     private final short id;
     public final IGenericMessageSerializer<?, ?> serializer;

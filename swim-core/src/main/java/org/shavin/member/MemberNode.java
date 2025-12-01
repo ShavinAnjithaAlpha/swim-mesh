@@ -18,6 +18,12 @@ public class MemberNode {
         this.address = address;
         this.status = MemberStatus.UNKNOWN;
     }
+
+    public MemberNode(int id, InetSocketAddress address, MemberStatus status) {
+        this.id = id;
+        this.address = address;
+        this.status = status;
+    }
     
     public int id() {
         return id;
@@ -33,5 +39,9 @@ public class MemberNode {
 
     public void setStatus(MemberStatus status) {
         this.status = status;
+    }
+
+    public boolean isHealthy() {
+        return status == MemberStatus.UP;
     }
 }

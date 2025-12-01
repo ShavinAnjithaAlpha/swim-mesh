@@ -16,7 +16,8 @@ public class MessageFlags implements Cloneable {
     public enum MessageFlag {
 
         COMPRESSION_BIT(0),
-        URGENT_BIT(1);
+        URGENT_BIT(1),
+        PIGGYBACKING(2);
 
         private final int position;
 

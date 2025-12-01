@@ -24,12 +24,6 @@ public interface GossipCluster {
     int getNodeId();
 
     /**
-     * Add a new member to the cluster.
-     * @param node Member to add.
-     */
-    void addMember(MemberNode node);
-
-    /**
      * Get the list of members in the cluster.
      * @return List of members.
      */
