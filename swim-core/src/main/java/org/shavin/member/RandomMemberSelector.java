@@ -25,7 +25,7 @@ public class RandomMemberSelector implements MemberSelection  {
         MemberNode selectedNode;
         do {
             selectedNode = members.get(random.nextInt(members.size()));
-        } while (selectedNode.id() == nodeId);
+        } while (selectedNode.id() == nodeId || !selectedNode.isHealthy());
 
         return selectedNode;
     }

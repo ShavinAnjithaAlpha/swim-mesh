@@ -21,6 +21,9 @@ public class RoundRobinMemberSelector implements MemberSelection {
     @Override
     public MemberNode selectNext() {
         currentIndex = (currentIndex + 1) % members.size();
-        return members.get(currentIndex);
+
+        MemberNode member = members.get(currentIndex);
+        if (!member.isHealthy() || member.id() == nodeId) return selectNext();
+        return member;
     }
 }
