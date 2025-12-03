@@ -21,6 +21,26 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
 
+/**
+ * StandardGossipClusterImpl is an implementation of the GossipCluster interface
+ * which manages membership and failure detection in a decentralized cluster
+ * using the SWIM protocol. Gossip protocol ensures cluster consistency and fault tolerance
+ * through periodic heartbeats, indirect verification, and membership updates.
+ *
+ * This class provides functionalities for starting and shutting down the cluster,
+ * node communication, monitoring indirect acknowledgments, and notifying
+ * listeners of cluster events. It also supports simulation of node crashes
+ * for testing purposes.
+ *
+ * Key features include:
+ * - Periodic pings to detect node failures.
+ * - Sending indirect pings via other nodes when direct acknowledgments are not received.
+ * - Management of node lifecycle events and membership data.
+ * - Customizable communication logic using a provided transport layer and thread factory.
+ * - Support for notifying listeners of membership changes and cluster events.
+ *
+ * @author shavin
+ */
 public class StandardGossipClusterImpl implements GossipCluster {
     private final static Logger log = LogManager.getLogger(StandardGossipClusterImpl.class);
 
@@ -47,6 +67,7 @@ public class StandardGossipClusterImpl implements GossipCluster {
 
     private final TransportLayer transportLayer;
     private final MemberSelection memberSelection;
+    private final ThreadFactory threadFactory;
     private ScheduledExecutorService scheduledExecutorService;
     private final AtomicLong sequenceGenerator = new AtomicLong(0L);
     private final AtomicLong requestIdGenerator = new AtomicLong(0L);
@@ -55,13 +76,26 @@ public class StandardGossipClusterImpl implements GossipCluster {
     private final Map<Long, Long> pendingAcks = new ConcurrentHashMap<>();
     private final Map<Long, Long> indirectPendingAcks = new ConcurrentHashMap<>();
 
-    public StandardGossipClusterImpl(int nodeId, int port, String[] seeds) {
+    public StandardGossipClusterImpl(int nodeId, int port, String[] seeds, TransportLayer transportLayer, ThreadFactory threadFactory) {
         this.nodeId = nodeId;
         this.port = port;
         this.seeds = seeds;
-
-        this.transportLayer = new NettyUdpTransportLayer(UDPTransportConfig.withDefaults());
         this.memberSelection = new RoundRobinMemberSelector(members, nodeId);
+        this.threadFactory = threadFactory;
+
+        this.transportLayer = transportLayer;
+    }
+
+    public StandardGossipClusterImpl(int nodeId, int port, String[] seeds, TransportLayer transportLayer) {
+        this(nodeId, port, seeds, transportLayer, Executors.defaultThreadFactory());
+    }
+
+    public StandardGossipClusterImpl(int nodeId, int port, String[] seeds) {
+        this(nodeId, port, seeds, new NettyUdpTransportLayer(UDPTransportConfig.withDefaults()), Executors.defaultThreadFactory());
+    }
+
+    public StandardGossipClusterImpl(int nodeId, int port, String[] seeds, ThreadFactory threadFactory ) {
+        this(nodeId, port, seeds, new NettyUdpTransportLayer(UDPTransportConfig.withDefaults()), threadFactory);
     }
 
     @Override
@@ -79,7 +113,7 @@ public class StandardGossipClusterImpl implements GossipCluster {
 
         state =  State.STARTED;
         // start the scheduler with two threads // one thread for message loop and another thread for timeouts handling
-        scheduledExecutorService = Executors.newScheduledThreadPool(2);
+        scheduledExecutorService = Executors.newScheduledThreadPool(2, threadFactory);
 
         // start the transport layer
         Future<Void> transportLayerFuture = this.transportLayer.start(this.port, this::handlePacket);
@@ -149,10 +183,12 @@ public class StandardGossipClusterImpl implements GossipCluster {
                         members.add(newMemberNode);
                         knownMemberIds.add(sourceNodeId);
 
-                        log.info("Learned about a new member node with id: " + sourceNodeId + " from the ACK message from " + sender.getHostString() + ":" + sender.getPort() + ".");
+                        log.debug("Learned about a new member node with id: {} from the ACK message from {}:{}.", sourceNodeId, sender.getHostString(), sender.getPort());
 
                         // adds the JOIN event of the source node to the membership event buffer
                         eventStore.enqueueEvent(MembershipEvent.Type.JOIN, newMemberNode);
+                        // notify the listeners about the membership event
+                        notifyEvents(new MembershipEvent(MembershipEvent.Type.JOIN, newMemberNode));
                     }
                     // remove the ping message from the pending acks map if it exists
                     pendingAcks.remove(sequenceNumber);
@@ -187,7 +223,7 @@ public class StandardGossipClusterImpl implements GossipCluster {
                     // find the source node to send the ack message as a reply
                     MemberNode sourceNode = members.stream().filter(member -> member.id() == indirectPingAckMessage.sourceNodeId()).findFirst().orElse(null);
                     if (sourceNode == null) {
-                        log.error("No member node found for the source node id: " + indirectPingAckMessage.sourceNodeId());
+                        log.error("No member node found for the source node id: {}", indirectPingAckMessage.sourceNodeId());
                         return;
                     }
 
@@ -210,7 +246,7 @@ public class StandardGossipClusterImpl implements GossipCluster {
                         // get the network address of the target node (requested node)
                         InetSocketAddress targetNodeAddress = members.stream().filter(member -> member.id() == indirectAckMessage.requestedNodeId()).findFirst().orElse(null).address();
                         if (targetNodeAddress == null) {
-                            log.error("No member node found for the target node id: " + indirectAckMessage.requestedNodeId());
+                            log.error("No member node found for the target node id: {}", indirectAckMessage.requestedNodeId());
                             return;
                         }
                         // if target address found forward the ack message to the target node
@@ -253,6 +289,7 @@ public class StandardGossipClusterImpl implements GossipCluster {
             log.info("Learned about a new member node with id: " + pingMessage.sourceNodeId() + " from the seed ping message from " + senderAddress.getHostString() + ":" + senderAddress.getPort() + ".");
 
             eventStore.enqueueEvent(MembershipEvent.Type.JOIN, newMemberNode);
+            notifyEvents(new MembershipEvent(MembershipEvent.Type.JOIN, newMemberNode));
         } else {
             replyAckMessage = PingAckMessageBuilder.pingAckMessageForNode(pingMessage);
         }
@@ -274,7 +311,6 @@ public class StandardGossipClusterImpl implements GossipCluster {
         } catch (IOException exception) {
             log.error(exception.getMessage(), exception);
         }
-
     }
 
     private void handlePiggybackData(List<MembershipEvent> events) {
@@ -287,16 +323,24 @@ public class StandardGossipClusterImpl implements GossipCluster {
                 if (!knownMemberIds.contains(event.nodeId())) {
                     members.add(new MemberNode(event.nodeId(), event.socketAddress(), MemberNode.MemberStatus.UP));
                     knownMemberIds.add(event.nodeId());
+
+                    notifyEvents(event);
                 }
             } else if (event.type() == MembershipEvent.Type.LEAVE) {
                 // remove the member from the member list if exists
-                members.removeIf(member -> member.id() == event.nodeId());
+                boolean removed = members.removeIf(member -> member.id() == event.nodeId());
                 // remove the member id from the known member ids set
                 knownMemberIds.remove(event.nodeId());
+
+                // notify the listeners if the member is removed from the member list
+                if (removed) notifyEvents(event);
             } else if (event.type() == MembershipEvent.Type.FAILURE) {
                 // mark as node is failed if the node is in the local member list
                 members.stream().filter(member -> member.id() == event.nodeId()).findFirst()
-                        .ifPresent(member -> member.setStatus(MemberNode.MemberStatus.DOWN));
+                        .ifPresent(member -> {
+                            member.setStatus(MemberNode.MemberStatus.DOWN);
+                            notifyEvents(event); // notify the listeners about the failure
+                        });
             }
         });
     }
@@ -412,6 +456,24 @@ public class StandardGossipClusterImpl implements GossipCluster {
         }
     }
 
+    private void notifyEvents(MembershipEvent event) {
+        // find the associated member node
+        MemberNode memberNode = members.stream().filter(member -> member.id() == event.nodeId()).findFirst().orElse(null);
+        if (memberNode == null) {
+            log.error("No member node found for the event with node id: " + event.nodeId());
+        }
+
+        listeners.forEach(clusterEventListener -> {
+            if (event.type() == MembershipEvent.Type.JOIN) {
+                clusterEventListener.onMemberJoined(memberNode);
+            } else if (event.type() == MembershipEvent.Type.LEAVE) {
+                clusterEventListener.onMemberLeft(memberNode);
+            } else if (event.type() == MembershipEvent.Type.FAILURE) {
+                clusterEventListener.onMemberFailed(memberNode);
+            }
+        });
+    }
+
     @Override
     public void shutdown() {
         // stop the scheduler service
@@ -432,7 +494,7 @@ public class StandardGossipClusterImpl implements GossipCluster {
 
     @Override
     public List<MemberNode> getMembers() {
-        return members;
+        return Collections.unmodifiableList(members);
     }
 
     @Override

@@ -5,6 +5,15 @@ import org.shavin.member.MemberNode;
 
 import java.util.List;
 
+/**
+ * Represents a Gossip Cluster that implements the Gossip protocol for
+ * decentralized membership management and failure detection.
+ *
+ * This interface defines the core abilities of a Gossip cluster, including starting,
+ * shutting down, managing member nodes, and handling cluster events.
+ *
+ * @author shavin
+ */
 public interface GossipCluster {
 
     /**
