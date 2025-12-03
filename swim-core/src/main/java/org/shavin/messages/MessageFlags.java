@@ -71,9 +71,9 @@ public class MessageFlags implements Cloneable {
 
         @Override
         public void serialize(MessageFlags messageFlags, ByteBuf out) throws IOException {
-            int flags = 0;
+            byte flags = 0;
             for (MessageFlag flag: messageFlags.flags()) {
-                flags |= (1 << flag.position);
+                flags |= (((byte) 1) << flag.position);
             }
             // write flag bit array to the byte buffer
             out.writeByte(flags);
@@ -88,7 +88,7 @@ public class MessageFlags implements Cloneable {
                 byte mask = (byte) (1 << i);
                 int exists = mask & flagsByte;
 
-                if (exists == 0) {
+                if (exists == mask) {
                     flags.addFlag(MessageFlag.fromPosition(i));
                 }
             }
