@@ -37,6 +37,14 @@ public class PingRequestMessage extends BaseGossipMessage implements IMessage {
         return Serializer.INSTANCE;
     }
 
+    @Override
+    public String toString() {
+        StringBuilder stringBuilder = new StringBuilder();
+        stringBuilder.append("PingRequest[ ").append(super.toString()).append(", targetNodeId: ").append(targetNodeId).append(", requestId: ").append(requestId).append("]");
+
+        return stringBuilder.toString();
+    }
+
     public static class Serializer implements IGenericMessageSerializer<PingRequestMessage, PingRequestMessage> {
 
         public static final Serializer INSTANCE = new Serializer();
