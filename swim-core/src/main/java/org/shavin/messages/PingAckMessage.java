@@ -1,8 +1,12 @@
 package org.shavin.messages;
 
 import io.netty.buffer.ByteBuf;
+import org.shavin.member.MembershipEvent;
 
 import java.io.IOException;
+import java.net.InetAddress;
+import java.util.ArrayList;
+import java.util.List;
 
 public class PingAckMessage extends BaseGossipMessage implements IMessage {
 
@@ -10,18 +14,42 @@ public class PingAckMessage extends BaseGossipMessage implements IMessage {
     public static final int NULL_SOURCE_ID = -1;
 
     private final long sequenceNumber;
+    private final List<MembershipEvent> events;
 
     public PingAckMessage(int sourceNodeId, int destinationNodeId, long sequenceNumber) {
         super(sourceNodeId, destinationNodeId);
         this.sequenceNumber = sequenceNumber;
+        this.events = null;
     }
 
     public PingAckMessage(BaseGossipMessage baseGossipMessage, long sequenceNumber) {
         this(baseGossipMessage.sourceNodeId(), baseGossipMessage.destinationNodeId(), sequenceNumber);
     }
 
+    public PingAckMessage(int sourceNodeId, int destinationNodeId, long sequenceNumber, List<MembershipEvent> events) {
+        super(sourceNodeId, destinationNodeId);
+        this.sequenceNumber = sequenceNumber;
+        this.events = events;
+    }
+
+    public PingAckMessage(BaseGossipMessage baseGossipMessage, long sequenceNumber, List<MembershipEvent> events) {
+        this(baseGossipMessage.sourceNodeId(), baseGossipMessage.destinationNodeId(), sequenceNumber, events);
+    }
+
     public long sequenceNumber() {
         return sequenceNumber;
+    }
+
+    public List<MembershipEvent> events() {
+        return events;
+    }
+
+    @Override
+    public String toString() {
+        StringBuilder stringBuilder = new StringBuilder();
+        stringBuilder.append("PingAck[ ").append(super.toString()).append(", sequenceNumber: ").append(sequenceNumber).append("]");
+
+        return stringBuilder.toString();
     }
 
     @Override
@@ -42,19 +70,48 @@ public class PingAckMessage extends BaseGossipMessage implements IMessage {
         public void serialize(PingAckMessage pingMessage, ByteBuf out) throws IOException {
             BaseGossipMessage.Serializer.INSTANCE.serialize(pingMessage, out);
             out.writeLong(pingMessage.sequenceNumber);
+            out.writeInt(pingMessage.events == null ? 0 : pingMessage.events.size()); // length of the events
+
+            // if a message gave events, serialize the events too
+            if (pingMessage.events != null && !pingMessage.events.isEmpty()) {
+                // write each event into the buffer
+                for (MembershipEvent event : pingMessage.events) {
+                    out.writeInt(event.nodeId());
+                    out.writeShort(event.type().id());
+                    out.writeBytes(event.socketAddress().getAddress().getAddress());
+                    out.writeShort(event.socketAddress().getPort());
+                }
+            }
         }
 
         @Override
         public PingAckMessage deserialize(ByteBuf in) throws IOException {
             BaseGossipMessage base = BaseGossipMessage.Serializer.INSTANCE.deserialize(in);
             long sequenceNumber = in.readLong();
+            int size = in.readInt(); // number of event data piggybacked to the message
 
-            return new PingAckMessage(base, sequenceNumber);
+
+            List<MembershipEvent> membershipEvents = new ArrayList<>(size);
+            for (int i = 0; i < size; i++) {
+                int nodeId = in.readInt();
+                MembershipEvent.Type type = MembershipEvent.Type.fromId(in.readShort());
+                byte[] address = new byte[4];
+                in.readBytes(address);
+                InetAddress hostAddress = InetAddress.getByAddress(address);
+                int port = in.readShort();
+
+                MembershipEvent membershipEvent = new MembershipEvent(type, nodeId, hostAddress.getHostAddress(), port);
+                membershipEvents.add(membershipEvent);
+            }
+
+            return new PingAckMessage(base, sequenceNumber, membershipEvents);
         }
 
         @Override
         public long serializedSize(PingAckMessage pingMessage) {
-            return BaseGossipMessage.Serializer.INSTANCE.serializedSize(pingMessage) + Long.BYTES;
+            long baseSize = BaseGossipMessage.Serializer.INSTANCE.serializedSize(pingMessage) + Long.BYTES;
+            int eventsSize = (pingMessage.events == null ? 0 : pingMessage.events.size()) * (Integer.BYTES + Short.BYTES + 4 + Short.BYTES);
+            return baseSize + Integer.BYTES + eventsSize; // base + length + events
         }
     }
 }

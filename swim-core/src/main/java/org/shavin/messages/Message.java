@@ -28,6 +28,14 @@ public class Message {
         return payloadSerializer;
     }
 
+    @Override
+    public String toString() {
+        StringBuilder stringBuilder = new StringBuilder();
+        stringBuilder.append("Message[header=").append(header).append(", payload=").append(payload).append("]");
+
+        return stringBuilder.toString();
+    }
+
     /**
      * Serializer for serializing all the messages that needs to be transmitted across network links to other peers.
      * This class uses header serializers and other payload-specific serializers for extracting a message with their header

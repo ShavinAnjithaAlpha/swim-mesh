@@ -56,4 +56,8 @@ public class BaseGossipMessage implements IMessage {
         }
     }
 
+    @Override
+    public String toString() {
+        return "sourceNodeId: " + sourceNodeId + ", destinationNodeId: " + destinationNodeId;
+    }
 }

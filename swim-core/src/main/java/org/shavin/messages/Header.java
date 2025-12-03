@@ -34,4 +34,16 @@ public class Header {
     public MessageFlags flags() {
         return flags;
     }
+
+    @Override
+    public String toString() {
+        StringBuilder stringBuilder = new StringBuilder();
+        stringBuilder.append("Header[type=").append(type)
+                .append(", version=").append(version)
+                .append(", timestamp=").append(timestamp)
+                .append(", flags=").append(flags)
+                .append("]");
+
+        return stringBuilder.toString();
+    }
 }

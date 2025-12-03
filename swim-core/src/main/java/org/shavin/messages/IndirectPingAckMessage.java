@@ -37,6 +37,14 @@ public class IndirectPingAckMessage extends BaseGossipMessage implements IMessag
         return Serializer.INSTANCE;
     }
 
+    @Override
+    public String toString() {
+        StringBuilder stringBuilder = new StringBuilder();
+        stringBuilder.append("IndirectPingAck[ ").append(super.toString()).append(", requestedNodeId: ").append(requestedNodeId).append(", requestId: ").append(requestId).append("]");
+
+        return stringBuilder.toString();
+    }
+
     public static class Serializer implements IGenericMessageSerializer<IndirectPingAckMessage, IndirectPingAckMessage> {
 
         public final static Serializer INSTANCE = new Serializer();
