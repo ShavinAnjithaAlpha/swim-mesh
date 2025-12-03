@@ -60,16 +60,16 @@ public class PingAckMessageBuilder {
         return new Message(header, pingMessage);
     }
 
-    public static Message ackWithPiggybacks(PingAckMessage requestPingMessage, List<MembershipEvent> events) {
+    public static Message attachPiggybacks(PingAckMessage replyAckMessage, List<MembershipEvent> events) {
         // create message flags with a piggyback flag
         MessageFlags messageFlags = new MessageFlags();
         messageFlags.addFlag(MessageFlags.MessageFlag.PIGGYBACKING);
 
         Header header = new Header(MessageType.ACK, MessageVersion.VERSION_1, messageFlags);
-        PiggybackPingAckMessage pingMessage = new PiggybackPingAckMessage(
-                requestPingMessage.destinationNodeId(),
-                requestPingMessage.sourceNodeId(),
-                requestPingMessage.sequenceNumber(), events);
+        PingAckMessage pingMessage = new PingAckMessage(
+                replyAckMessage.sourceNodeId(),
+                replyAckMessage.destinationNodeId(),
+                replyAckMessage.sequenceNumber(), events);
 
         return new Message(header, pingMessage);
     }

@@ -31,16 +31,34 @@ public class MembershipEvent {
         }
     }
 
+    private static int threshold;
+
     private final Type type;
     private final int nodeId;
     private final String hostAddress;
     private final int port;
+    private final int incarnationNumber;
 
-    public MembershipEvent(Type type, int nodeId, String hostAddress, int port) {
+    private int disseminationCount=  0;
+
+    public MembershipEvent(Type type, int nodeId, String hostAddress, int port, int incarnationNumber) {
         this.type = type;
         this.nodeId = nodeId;
         this.hostAddress = hostAddress;
         this.port = port;
+        this.incarnationNumber = incarnationNumber;
+    }
+
+    public MembershipEvent(Type type, int nodeId, String hostAddress, int port) {
+        this(type, nodeId, hostAddress, port, 0);
+    }
+
+    public MembershipEvent(Type type, MemberNode memberNode) {
+        this.type = type;
+        this.nodeId = memberNode.id();;
+        this.hostAddress = memberNode.address().getHostString();
+        this.port = memberNode.address().getPort();
+        this.incarnationNumber = memberNode.incarnationNumber();
     }
 
     public Type type() {
@@ -61,5 +79,17 @@ public class MembershipEvent {
 
     public InetSocketAddress socketAddress() {
         return new InetSocketAddress(hostAddress, port);
+    }
+
+    public int incarnationNumber() {
+        return incarnationNumber;
+    }
+
+    public void incrementDisseminationCount() {
+        disseminationCount++;
+    }
+
+    public int disseminationCount() {
+        return disseminationCount;
     }
 }

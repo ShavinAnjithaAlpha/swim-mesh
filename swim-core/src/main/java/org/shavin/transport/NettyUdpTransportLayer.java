@@ -15,6 +15,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.net.InetSocketAddress;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class NettyUdpTransportLayer implements TransportLayer {
@@ -44,10 +45,10 @@ public class NettyUdpTransportLayer implements TransportLayer {
     }
 
     @Override
-    public void start(int port, MessageHandler handler) {
+    public Future<Void> start(int port, MessageHandler handler) {
         if (state == State.RUNNING) {
             log.info("UDP transport layer already running on port {}", port);
-            return;
+            return channel.newSucceededFuture();
         }
 
         if (state == State.FAILED) {
@@ -95,6 +96,8 @@ public class NettyUdpTransportLayer implements TransportLayer {
             channel.closeFuture().addListener(future -> {
                 log.info("UDP transport layer stopped on port " + port);
             });
+
+            return channelFuture;
         } catch (Exception exception) {
             log.error(exception.getMessage(), exception);
 
@@ -110,6 +113,7 @@ public class NettyUdpTransportLayer implements TransportLayer {
             }
 
             state = State.FAILED;
+            return channel.newFailedFuture(exception);
         }
     }
 

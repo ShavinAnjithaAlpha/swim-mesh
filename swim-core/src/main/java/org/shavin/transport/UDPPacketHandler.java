@@ -29,7 +29,6 @@ public class UDPPacketHandler extends SimpleChannelInboundHandler<DatagramPacket
 
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, DatagramPacket msg) throws Exception {
-        log.info("Received UDP packet from {}", msg.sender());
         ByteBuf buffer = msg.content();
 
         // retain the buffer content

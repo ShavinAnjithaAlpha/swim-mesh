@@ -17,18 +17,18 @@ import org.shavin.transport.UDPTransportConfig;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.util.List;
-import java.util.Map;
-import java.util.Queue;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class StandardGossipClusterImpl implements GossipCluster {
     private final static Logger log = LogManager.getLogger(StandardGossipClusterImpl.class);
 
+    private final static int PING_INTERVAL_MS = 1000;
+    private final static int PING_INITIAL_DELAY_MS = 5000;
     private final static int DEFAULT_TIMEOUT_MS = 1000;
     private final static int DEFAULT_INDIRECT_PING_REQUEST_TIMEOUT_MS = 2500;
+    private final static int SAFE_MTU = 1400;
 
     private static enum State {
         NOT_STARTED, STARTED, STOPPED, FAILED
@@ -43,7 +43,7 @@ public class StandardGossipClusterImpl implements GossipCluster {
     private final List<MemberNode> members = new CopyOnWriteArrayList<>();
     private final Set<Integer> knownMemberIds = ConcurrentHashMap.newKeySet();
     private final List<ClusterEventListener> listeners = new CopyOnWriteArrayList<>();
-    private final Queue<MembershipEvent> membershipEventBuffer = new ConcurrentLinkedQueue<>();
+    private final MembershipEventStore eventStore = MembershipEventStore.getInstance();
 
     private final TransportLayer transportLayer;
     private final MemberSelection memberSelection;
@@ -78,20 +78,26 @@ public class StandardGossipClusterImpl implements GossipCluster {
         }
 
         state =  State.STARTED;
-        // start the scheduler with teo threads // one thread for message loop and another thread for timeouts handling
+        // start the scheduler with two threads // one thread for message loop and another thread for timeouts handling
         scheduledExecutorService = Executors.newScheduledThreadPool(2);
 
         // start the transport layer
-        this.transportLayer.start(this.port, this::handlePacket);
+        Future<Void> transportLayerFuture = this.transportLayer.start(this.port, this::handlePacket);
+        try {
+            transportLayerFuture.get();
 
-        // start the seeding process
-        seedNodes();
+            // start the seeding process
+            seedNodes();
 
-        log.info("Starting SWIM protocol execution");
-        // start the scheduler threads at a fixed rate
-        scheduledExecutorService.scheduleAtFixedRate(this::executeSWIMProtocol, 1000, 1000, java.util.concurrent.TimeUnit.MILLISECONDS);
+            log.info("Starting SWIM protocol execution");
+            // start the scheduler threads at a fixed rate
+            scheduledExecutorService.scheduleAtFixedRate(this::executeSWIMProtocol, PING_INITIAL_DELAY_MS, PING_INTERVAL_MS, java.util.concurrent.TimeUnit.MILLISECONDS);
 
-        log.info("successfully started the gossip cluster at nodeId: " + nodeId);
+            log.info("successfully started the gossip cluster at nodeId: " + nodeId);
+        } catch (InterruptedException | ExecutionException exception) {
+            log.error(exception.getMessage(), exception);
+            state = State.FAILED;
+        }
     }
 
     private void seedNodes() {
@@ -103,6 +109,7 @@ public class StandardGossipClusterImpl implements GossipCluster {
             Message seedPingMessage = PingAckMessageBuilder.seedPingMessages(nodeId, sequenceGenerator.incrementAndGet());
             try {
                 byte[] bytes = messageToBytes(seedPingMessage);
+
                 transportLayer.send(seedAddress, bytes);
             } catch (IOException exception) {
                 log.error(exception.getMessage(), exception);
@@ -128,23 +135,32 @@ public class StandardGossipClusterImpl implements GossipCluster {
                 }
 
                 case ACK -> {
-                    PingAckMessage ackPayload = (PingAckMessage) message.payload();
-                    // check if the source node is known or not previous
-                    if (!knownMemberIds.contains(ackPayload.sourceNodeId())) {
-                        // if not known, add it to the member list
-                        members.add(new MemberNode(ackPayload.sourceNodeId(), sender, MemberNode.MemberStatus.UP));
-                        knownMemberIds.add(ackPayload.sourceNodeId());
 
-                        log.info("Learned about a new member node with id: " + ackPayload.sourceNodeId() + " from the ACK message from " + sender.getHostString() + ":" + sender.getPort() + ".");
+                    PingAckMessage ackPayload = (PingAckMessage) message.payload();
+                    int sourceNodeId = ackPayload.sourceNodeId();
+                    long sequenceNumber = ackPayload.sequenceNumber();
+                    boolean hasPiggybackData = ackPayload.events() != null && !ackPayload.events().isEmpty();
+                    List<MembershipEvent> events = ackPayload.events();
+
+                    // check if the source node is known or not previous
+                    if (!knownMemberIds.contains(sourceNodeId)) {
+                        // if not known, add it to the member list
+                        MemberNode newMemberNode = new MemberNode(sourceNodeId, sender, MemberNode.MemberStatus.UP);
+                        members.add(newMemberNode);
+                        knownMemberIds.add(sourceNodeId);
+
+                        log.info("Learned about a new member node with id: " + sourceNodeId + " from the ACK message from " + sender.getHostString() + ":" + sender.getPort() + ".");
 
                         // adds the JOIN event of the source node to the membership event buffer
-                        membershipEventBuffer.add(new MembershipEvent(MembershipEvent.Type.JOIN,
-                                ackPayload.sourceNodeId(),
-                                sender.getAddress().getHostAddress(),
-                                sender.getPort()));
+                        eventStore.enqueueEvent(MembershipEvent.Type.JOIN, newMemberNode);
                     }
                     // remove the ping message from the pending acks map if it exists
-                    pendingAcks.remove(ackPayload.sequenceNumber());
+                    pendingAcks.remove(sequenceNumber);
+
+                    // handle piggyback data if exists
+                    if (hasPiggybackData) {
+                        handlePiggybackData(events);
+                    }
                     break;
                 }
 
@@ -215,6 +231,8 @@ public class StandardGossipClusterImpl implements GossipCluster {
             log.info("No INDIRECT ACK received from " + targetNode.id() + " for indirect ping message with request id " + requestId + ". Marking the node as failed.");
 
             targetNode.setStatus(MemberNode.MemberStatus.DOWN);
+            // add a membership event to the event store
+            eventStore.enqueueEvent(MembershipEvent.Type.FAILURE, targetNode);
 
             // broadcast the status update for other nodes in the member list
             // TODO: implement broadcast logic for status update via UDP or TCP
@@ -225,25 +243,31 @@ public class StandardGossipClusterImpl implements GossipCluster {
         // create an appropriate ack message from the ping message
         Message replyAckMessage;
         if (pingMessage.destinationNodeId() == PingAckMessage.NULL_DESTINATION_ID) { // handle if destination node id is null // SEED PING
-            replyAckMessage = PingAckMessageBuilder.pingAckMessageForNode(nodeId, pingMessage.sourceNodeId(), pingMessage.sequenceNumber());
+            replyAckMessage = PingAckMessageBuilder.pingAckMessageForNode(this.nodeId, pingMessage.sourceNodeId(), pingMessage.sequenceNumber());
 
             // Add the source member node to the member list
-            members.add(new MemberNode(pingMessage.sourceNodeId(), senderAddress, MemberNode.MemberStatus.UP));
+            MemberNode newMemberNode = new MemberNode(pingMessage.sourceNodeId(), senderAddress, MemberNode.MemberStatus.UP);
+            members.add(newMemberNode);
             knownMemberIds.add(pingMessage.sourceNodeId());
 
             log.info("Learned about a new member node with id: " + pingMessage.sourceNodeId() + " from the seed ping message from " + senderAddress.getHostString() + ":" + senderAddress.getPort() + ".");
 
-            membershipEventBuffer.add(new MembershipEvent(MembershipEvent.Type.JOIN,
-                    pingMessage.sourceNodeId(),
-                    senderAddress.getHostString(),
-                    senderAddress.getPort()));
+            eventStore.enqueueEvent(MembershipEvent.Type.JOIN, newMemberNode);
         } else {
             replyAckMessage = PingAckMessageBuilder.pingAckMessageForNode(pingMessage);
         }
+
+        List<MembershipEvent> eventsToPiggyback = eventStore.getRecentEventsAndIncrement();
+        if (!eventsToPiggyback.isEmpty()) {
+            log.info("Piggybacking {} events to the ACK message.", eventsToPiggyback.size());
+            replyAckMessage = PingAckMessageBuilder.attachPiggybacks((PingAckMessage) replyAckMessage.payload(), eventsToPiggyback);
+        }
+
         try {
             // serialize the message into a byte array
             byte[] bytes = messageToBytes(replyAckMessage);
-            // send it to the transport layer
+
+            // send it to the transport
             transportLayer.send(senderAddress, bytes);
 
             log.info("Sent ACK message to " + pingMessage.sourceNodeId() + " for ping message with sequence number " + pingMessage.sequenceNumber());
@@ -251,6 +275,30 @@ public class StandardGossipClusterImpl implements GossipCluster {
             log.error(exception.getMessage(), exception);
         }
 
+    }
+
+    private void handlePiggybackData(List<MembershipEvent> events) {
+        events.forEach(event -> {
+            // merge the events with the local event store
+            eventStore.enqueueEvent(event);
+            // update the memberlist according to the events received
+            if (event.type() == MembershipEvent.Type.JOIN) {
+                // check of the member is in the local member list and add if its not
+                if (!knownMemberIds.contains(event.nodeId())) {
+                    members.add(new MemberNode(event.nodeId(), event.socketAddress(), MemberNode.MemberStatus.UP));
+                    knownMemberIds.add(event.nodeId());
+                }
+            } else if (event.type() == MembershipEvent.Type.LEAVE) {
+                // remove the member from the member list if exists
+                members.removeIf(member -> member.id() == event.nodeId());
+                // remove the member id from the known member ids set
+                knownMemberIds.remove(event.nodeId());
+            } else if (event.type() == MembershipEvent.Type.FAILURE) {
+                // mark as node is failed if the node is in the local member list
+                members.stream().filter(member -> member.id() == event.nodeId()).findFirst()
+                        .ifPresent(member -> member.setStatus(MemberNode.MemberStatus.DOWN));
+            }
+        });
     }
 
     private byte[] messageToBytes(Message message) throws IOException {
@@ -270,8 +318,23 @@ public class StandardGossipClusterImpl implements GossipCluster {
         return bytes;
     }
 
+    private boolean isSeedingFinished() {
+        // check whether all the nodes in the seed list are known or not
+        for (String seed : seeds) {
+            String[] seedParts = seed.split(":");
+            InetSocketAddress seedAddress = new InetSocketAddress(seedParts[0], Integer.parseInt(seedParts[1]));
+            MemberNode memberNode = members.stream().filter(member -> member.address().equals(seedAddress)).findFirst().orElse(null);
+
+            if (memberNode == null) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private void executeSWIMProtocol() {
-        if (!(this.state == State.STARTED) || members.isEmpty()) {
+        if (!(this.state == State.STARTED) || members.isEmpty() || !isSeedingFinished()) {
             // again trigger a seeding process if the cluster is not started or the member list is empty
             seedNodes();
             return;
@@ -285,20 +348,9 @@ public class StandardGossipClusterImpl implements GossipCluster {
         Message pingMessage = PingAckMessageBuilder.pingMessageForNode(nodeId, selectedNode.id(), sequenceNumber);
         PingAckMessage payload = (PingAckMessage) pingMessage.payload();
 
-        log.info("Sending PING message to " + selectedNode.id() + " with sequence number " + payload.sequenceNumber());
+
         try {
-            // allocate a byte buffer to serialize the ping message
-            ByteBuf buffer = allocater.buffer((int) Message.Serializer.serializedSize(pingMessage));
-            // serialize the ping message and send it through the transport layer to the targeted node
-            Message.Serializer.serialize(pingMessage, buffer);
-            // serialize the ping message and send it through the transport layer to the targeted node
-            byte[] bytes;
-            if (buffer.hasArray()) {
-                bytes = buffer.array();
-            } else {
-                bytes = new byte[buffer.readableBytes()];
-                buffer.getBytes(buffer.readerIndex(), bytes);
-            }
+            byte[] bytes = messageToBytes(pingMessage);
 
             transportLayer.send(selectedNode.address(), bytes);
             // put the sequence number of the ping message into the pending acks map so that we can track the ack message later
