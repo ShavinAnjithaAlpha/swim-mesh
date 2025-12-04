@@ -5,8 +5,8 @@ module org.shavin.swim.core {
     requires io.netty.common;
     requires io.netty.handler;
     requires io.netty.codec;
-    requires org.apache.logging.log4j;
     requires io.netty.transport.classes.epoll;
+    requires org.slf4j;
 
     exports org.shavin.api;
     exports org.shavin.api.message;

@@ -5,15 +5,15 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.channel.socket.DatagramPacket;
 import io.netty.util.ReferenceCountUtil;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.shavin.api.transport.MessageHandler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.net.InetSocketAddress;
 import java.util.concurrent.*;
 
 public class UDPPacketHandler extends SimpleChannelInboundHandler<DatagramPacket> {
-    private final static Logger log = LogManager.getLogger(UDPPacketHandler.class);
+    private final static Logger log = LoggerFactory.getLogger(UDPPacketHandler.class);
 
     private final MessageHandler handler;
 

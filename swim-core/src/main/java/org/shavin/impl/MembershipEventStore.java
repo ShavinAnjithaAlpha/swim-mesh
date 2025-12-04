@@ -1,9 +1,9 @@
 package org.shavin.impl;
 
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.shavin.api.member.MemberNode;
 import org.shavin.member.MembershipEvent;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -17,7 +17,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * @author shavin
  */
 public class MembershipEventStore {
-    private final static Logger logger = LogManager.getLogger(MembershipEventStore.class);
+    private final static Logger log = LoggerFactory.getLogger(MembershipEventStore.class);
 
     private final int maxEventsToKeep = 1000;
     private final int THRESHOLD = 10; // TODO: should be calculated according to cluster capacity

@@ -2,8 +2,6 @@ package org.shavin.impl;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.shavin.api.GossipCluster;
 import org.shavin.api.GossipClusterBuilder;
 import org.shavin.api.member.MemberNode;
@@ -13,6 +11,8 @@ import org.shavin.messages.*;
 import org.shavin.transport.NettyUdpTransportLayer;
 import org.shavin.api.transport.TransportLayer;
 import org.shavin.transport.UDPTransportConfig;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -41,7 +41,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * @author shavin
  */
 public class StandardGossipClusterImpl implements GossipCluster {
-    private final static Logger log = LogManager.getLogger(StandardGossipClusterImpl.class);
+    private final static Logger log = LoggerFactory.getLogger(StandardGossipClusterImpl.class);
 
     private final static int PING_INTERVAL_MS = 1000;
     private final static int PING_INITIAL_DELAY_MS = 5000;
@@ -269,7 +269,7 @@ public class StandardGossipClusterImpl implements GossipCluster {
             // remove the ack from the pending acks
             indirectPendingAcks.remove(requestId);
 
-            log.info("No INDIRECT ACK received from " + targetNode.id() + " for indirect ping message with request id " + requestId + ". Marking the node as failed.");
+            log.info("No INDIRECT ACK received from {} for indirect ping message with request id {}. Marking the node as failed.", targetNode.id(), requestId);
 
             targetNode.setStatus(MemberNode.MemberStatus.DOWN);
             // add a membership event to the event store

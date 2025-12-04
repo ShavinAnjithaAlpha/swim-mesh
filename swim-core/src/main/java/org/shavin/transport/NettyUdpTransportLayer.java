@@ -11,17 +11,17 @@ import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.DatagramPacket;
 import io.netty.channel.socket.nio.NioDatagramChannel;
 import io.netty.util.concurrent.GlobalEventExecutor;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.shavin.api.transport.MessageHandler;
 import org.shavin.api.transport.TransportLayer;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.net.InetSocketAddress;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicLong;
 
 public class NettyUdpTransportLayer implements TransportLayer {
-    private final static Logger log = LogManager.getLogger(NettyUdpTransportLayer.class);
+    private final static Logger log = LoggerFactory.getLogger(NettyUdpTransportLayer.class);
 
     private enum State {
         NOT_RUNNING, RUNNING, STOPPED, FAILED
@@ -92,11 +92,11 @@ public class NettyUdpTransportLayer implements TransportLayer {
 
             this.bindAddress = (InetSocketAddress) channel.localAddress();
 
-            log.info("UDP transport layer started on port " + port);
+            log.info("UDP transport layer started on port {}", port);
             state = State.RUNNING;
 
             channel.closeFuture().addListener(future -> {
-                log.info("UDP transport layer stopped on port " + port);
+                log.info("UDP transport layer stopped on port {}", port);
             });
 
             return channelFuture;
@@ -166,7 +166,7 @@ public class NettyUdpTransportLayer implements TransportLayer {
             throw new IllegalStateException("The udp service not started yet");
         }
 
-        log.info("Stopping the udp service at address" + this.bindAddress);
+        log.info("Stopping the udp service at address{}", this.bindAddress);
         try {
             try {
                 channelGroup.close().awaitUninterruptibly();
@@ -183,6 +183,6 @@ public class NettyUdpTransportLayer implements TransportLayer {
         }
 
         state = State.STOPPED;
-        log.debug("Stopped UDP Server at address: " + this.bindAddress);
+        log.debug("Stopped UDP Server at address: {}", this.bindAddress);
     }
 }

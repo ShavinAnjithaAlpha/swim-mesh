@@ -4,12 +4,12 @@ import io.netty.channel.ChannelPipeline;
 import io.netty.channel.socket.DatagramChannel;
 import io.netty.util.concurrent.DefaultEventExecutorGroup;
 import io.netty.util.concurrent.EventExecutorGroup;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import org.shavin.api.transport.MessageHandler;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class UDPChannelInitializer {
-    private final static Logger log = LogManager.getLogger(UDPChannelInitializer.class);
+    private final static Logger log = LoggerFactory.getLogger(UDPChannelInitializer.class);
 
     private final EventExecutorGroup eventExecutorGroup;
     private final MessageHandler handler;
