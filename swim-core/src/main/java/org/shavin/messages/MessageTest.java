@@ -8,22 +8,25 @@ import java.io.IOException;
 public class MessageTest {
 
     public static void main(String[] args) throws IOException {
-        // create a ping message with a header
-        PingAckMessage pingMessage = new PingAckMessage(1111, 22229, 39859345798L);
-        Header header = new Header(MessageType.PING, MessageVersion.VERSION_1);
-        Message message = new Message(header, pingMessage);
-        System.out.println(message.header().timestamp());
+        Message message = PingAckMessageBuilder.pingMessageForNode(1, 2, 3000000L);
+        Message reply = PingAckMessageBuilder.pingAckMessageForNode((PingAckMessage) message.payload());
+        System.out.println(reply);
 
-        ByteBuf buf = ByteBufAllocator.DEFAULT.buffer();
-        Message.Serializer.serialize(message, buf);
+        ByteBuf buffer = ByteBufAllocator.DEFAULT.buffer();
+        Message.Serializer.serialize(reply, buffer);
+
+        byte[] bytes;
+        if (buffer.hasArray()) {
+            bytes = buffer.array();
+        } else {
+            bytes = new byte[buffer.readableBytes()];
+            buffer.getBytes(buffer.readerIndex(), bytes);
+        }
+
+        ByteBuf buf = ByteBufAllocator.DEFAULT.buffer(bytes.length);
+        buf.writeBytes(bytes);
 
         Message deserializedMessage = Message.Serializer.deserialize(buf);
-        System.out.println(deserializedMessage.header().timestamp());
-
-        PingAckMessage pingMessage1 = (PingAckMessage) deserializedMessage.payload();
-        System.out.println(pingMessage1.sourceNodeId());
-        System.out.println(pingMessage1.destinationNodeId());
-
-        System.out.println("packet size = " + Message.Serializer.serializedSize(message) + " bytes");
+        System.out.println(deserializedMessage);
     }
 }

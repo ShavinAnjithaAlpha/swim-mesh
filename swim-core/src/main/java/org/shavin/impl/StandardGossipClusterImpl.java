@@ -4,15 +4,14 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.shavin.GossipCluster;
-import org.shavin.member.MemberNode;
-import org.shavin.event.ClusterEventListener;
-import org.shavin.member.MemberSelection;
-import org.shavin.member.MembershipEvent;
-import org.shavin.member.RoundRobinMemberSelector;
+import org.shavin.api.GossipCluster;
+import org.shavin.api.GossipClusterBuilder;
+import org.shavin.api.member.MemberNode;
+import org.shavin.member.*;
+import org.shavin.api.event.ClusterEventListener;
 import org.shavin.messages.*;
 import org.shavin.transport.NettyUdpTransportLayer;
-import org.shavin.transport.TransportLayer;
+import org.shavin.api.transport.TransportLayer;
 import org.shavin.transport.UDPTransportConfig;
 
 import java.io.IOException;
@@ -76,26 +75,32 @@ public class StandardGossipClusterImpl implements GossipCluster {
     private final Map<Long, Long> pendingAcks = new ConcurrentHashMap<>();
     private final Map<Long, Long> indirectPendingAcks = new ConcurrentHashMap<>();
 
-    public StandardGossipClusterImpl(int nodeId, int port, String[] seeds, TransportLayer transportLayer, ThreadFactory threadFactory) {
+    public StandardGossipClusterImpl(int nodeId, int port, String[] seeds, TransportLayer transportLayer, ThreadFactory threadFactory, GossipClusterBuilder.NextMemberSelectionStrategy selectionStrategy) {
         this.nodeId = nodeId;
         this.port = port;
         this.seeds = seeds;
-        this.memberSelection = new RoundRobinMemberSelector(members, nodeId);
         this.threadFactory = threadFactory;
-
         this.transportLayer = transportLayer;
+
+        if (selectionStrategy == GossipClusterBuilder.NextMemberSelectionStrategy.ROUND_ROBIN_SELECTION_STRATEGY) {
+            this.memberSelection = new RoundRobinMemberSelector(members, nodeId);
+        } else if (selectionStrategy == GossipClusterBuilder.NextMemberSelectionStrategy.RANDOM_MEMBER_SELECTION_STRATEGY) {
+            this.memberSelection = new RandomMemberSelector(members, nodeId);
+        } else {
+            this.memberSelection = new RoundRobinMemberSelector(members, nodeId);
+        }
     }
 
     public StandardGossipClusterImpl(int nodeId, int port, String[] seeds, TransportLayer transportLayer) {
-        this(nodeId, port, seeds, transportLayer, Executors.defaultThreadFactory());
+        this(nodeId, port, seeds, transportLayer, Executors.defaultThreadFactory(), GossipClusterBuilder.NextMemberSelectionStrategy.ROUND_ROBIN_SELECTION_STRATEGY);
     }
 
     public StandardGossipClusterImpl(int nodeId, int port, String[] seeds) {
-        this(nodeId, port, seeds, new NettyUdpTransportLayer(UDPTransportConfig.withDefaults()), Executors.defaultThreadFactory());
+        this(nodeId, port, seeds, new NettyUdpTransportLayer(UDPTransportConfig.withDefaults()), Executors.defaultThreadFactory(), GossipClusterBuilder.NextMemberSelectionStrategy.ROUND_ROBIN_SELECTION_STRATEGY);
     }
 
     public StandardGossipClusterImpl(int nodeId, int port, String[] seeds, ThreadFactory threadFactory ) {
-        this(nodeId, port, seeds, new NettyUdpTransportLayer(UDPTransportConfig.withDefaults()), threadFactory);
+        this(nodeId, port, seeds, new NettyUdpTransportLayer(UDPTransportConfig.withDefaults()), threadFactory, GossipClusterBuilder.NextMemberSelectionStrategy.ROUND_ROBIN_SELECTION_STRATEGY);
     }
 
     @Override
@@ -268,10 +273,8 @@ public class StandardGossipClusterImpl implements GossipCluster {
 
             targetNode.setStatus(MemberNode.MemberStatus.DOWN);
             // add a membership event to the event store
+            targetNode.increaseIncarnationNumber(); // increase the incarnation number of the target node
             eventStore.enqueueEvent(MembershipEvent.Type.FAILURE, targetNode);
-
-            // broadcast the status update for other nodes in the member list
-            // TODO: implement broadcast logic for status update via UDP or TCP
         }
     }
 
@@ -291,12 +294,23 @@ public class StandardGossipClusterImpl implements GossipCluster {
             eventStore.enqueueEvent(MembershipEvent.Type.JOIN, newMemberNode);
             notifyEvents(new MembershipEvent(MembershipEvent.Type.JOIN, newMemberNode));
         } else {
+            // check if the source node is dead previously
+            MemberNode sourceNode = members.stream().filter(member -> member.id() == pingMessage.sourceNodeId()).findFirst().orElse(null);
+            if (sourceNode != null && !sourceNode.isHealthy()) {
+                // then mark the source node as alive
+                sourceNode.setStatus(MemberNode.MemberStatus.UP);
+                sourceNode.increaseIncarnationNumber(); // increase the incarnation number of the source node
+                // create a membership event for propagate that information to the other nodes in the cluster
+                eventStore.enqueueEvent(new MembershipEvent(MembershipEvent.Type.RESTORE, sourceNode));
+                // notify the listeners about the membership event
+                notifyEvents(new MembershipEvent(MembershipEvent.Type.RESTORE, sourceNode));
+            }
+            // create an ACK message for the ping message
             replyAckMessage = PingAckMessageBuilder.pingAckMessageForNode(pingMessage);
         }
 
         List<MembershipEvent> eventsToPiggyback = eventStore.getRecentEventsAndIncrement();
         if (!eventsToPiggyback.isEmpty()) {
-            log.info("Piggybacking {} events to the ACK message.", eventsToPiggyback.size());
             replyAckMessage = PingAckMessageBuilder.attachPiggybacks((PingAckMessage) replyAckMessage.payload(), eventsToPiggyback);
         }
 
@@ -307,7 +321,6 @@ public class StandardGossipClusterImpl implements GossipCluster {
             // send it to the transport
             transportLayer.send(senderAddress, bytes);
 
-            log.info("Sent ACK message to " + pingMessage.sourceNodeId() + " for ping message with sequence number " + pingMessage.sequenceNumber());
         } catch (IOException exception) {
             log.error(exception.getMessage(), exception);
         }
@@ -341,25 +354,34 @@ public class StandardGossipClusterImpl implements GossipCluster {
                             member.setStatus(MemberNode.MemberStatus.DOWN);
                             notifyEvents(event); // notify the listeners about the failure
                         });
+            } else if (event.type() == MembershipEvent.Type.RESTORE) {
+                members.stream().filter(member -> member.id() == event.nodeId()).findFirst()
+                        .ifPresent(member -> {
+                            member.setStatus(MemberNode.MemberStatus.UP);
+                            member.increaseIncarnationNumber();
+                            notifyEvents(event);
+                        });
             }
         });
     }
 
     private byte[] messageToBytes(Message message) throws IOException {
-        // allocate a new buffer for serialize the message
-        ByteBuf buffer = allocater.buffer((int) Message.Serializer.serializedSize(message));
-        // serialize the message into the buffer
-        Message.Serializer.serialize(message, buffer);
-        // get the byte array representation of the buffer
-        byte[] bytes;
-        if (buffer.hasArray()) {
-            bytes = buffer.array();
-        } else {
+        ByteBuf buffer = null;
+        try {
+            // allocate a new buffer for serialize the message
+            buffer = allocater.buffer((int) Message.Serializer.serializedSize(message));
+            // serialize the message into the buffer
+            Message.Serializer.serialize(message, buffer);
+            // get the byte array representation of the buffer
+            byte[] bytes;
             bytes = new byte[buffer.readableBytes()];
             buffer.getBytes(buffer.readerIndex(), bytes);
+            return bytes;
+        } finally {
+            if (buffer != null) {
+                buffer.release();
+            }
         }
-
-        return bytes;
     }
 
     private boolean isSeedingFinished() {
@@ -378,7 +400,11 @@ public class StandardGossipClusterImpl implements GossipCluster {
     }
 
     private void executeSWIMProtocol() {
-        if (!(this.state == State.STARTED) || members.isEmpty() || !isSeedingFinished()) {
+        if (!(this.state == State.STARTED)) { // return if the cluster is not started
+            return;
+        }
+
+        if (members.isEmpty() || !isSeedingFinished()) {
             // again trigger a seeding process if the cluster is not started or the member list is empty
             seedNodes();
             return;

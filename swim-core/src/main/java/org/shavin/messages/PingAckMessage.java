@@ -1,6 +1,7 @@
 package org.shavin.messages;
 
 import io.netty.buffer.ByteBuf;
+import org.shavin.api.message.IGenericMessageSerializer;
 import org.shavin.member.MembershipEvent;
 
 import java.io.IOException;

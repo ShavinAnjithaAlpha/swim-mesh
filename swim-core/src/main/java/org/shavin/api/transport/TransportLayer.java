@@ -1,4 +1,4 @@
-package org.shavin.transport;
+package org.shavin.api.transport;
 
 import java.net.InetSocketAddress;
 import java.util.concurrent.Future;

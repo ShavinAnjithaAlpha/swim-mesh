@@ -1,5 +1,7 @@
 package org.shavin.member;
 
+import org.shavin.api.member.MemberNode;
+
 import java.security.SecureRandom;
 import java.util.List;
 

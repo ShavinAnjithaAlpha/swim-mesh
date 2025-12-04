@@ -1,4 +1,4 @@
-package org.shavin.member;
+package org.shavin.api.member;
 
 import java.net.InetSocketAddress;
 import java.util.Objects;

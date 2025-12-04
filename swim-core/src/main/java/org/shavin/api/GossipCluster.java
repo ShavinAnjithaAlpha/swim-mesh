@@ -1,7 +1,7 @@
-package org.shavin;
+package org.shavin.api;
 
-import org.shavin.event.ClusterEventListener;
-import org.shavin.member.MemberNode;
+import org.shavin.api.event.ClusterEventListener;
+import org.shavin.api.member.MemberNode;
 
 import java.util.List;
 

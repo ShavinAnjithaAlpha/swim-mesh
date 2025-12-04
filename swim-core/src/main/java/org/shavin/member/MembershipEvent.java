@@ -1,5 +1,7 @@
 package org.shavin.member;
 
+import org.shavin.api.member.MemberNode;
+
 import java.net.InetSocketAddress;
 
 /**
@@ -9,7 +11,7 @@ import java.net.InetSocketAddress;
 public class MembershipEvent {
 
     public static enum Type {
-        JOIN((short) 1), LEAVE((short) 2), FAILURE((short) 3);
+        JOIN((short) 1), LEAVE((short) 2), RESTORE((short) 3) ,FAILURE((short) 4);
 
         private short id;
 

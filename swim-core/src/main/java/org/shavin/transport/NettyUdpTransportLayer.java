@@ -13,6 +13,8 @@ import io.netty.channel.socket.nio.NioDatagramChannel;
 import io.netty.util.concurrent.GlobalEventExecutor;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.shavin.api.transport.MessageHandler;
+import org.shavin.api.transport.TransportLayer;
 
 import java.net.InetSocketAddress;
 import java.util.concurrent.Future;
@@ -144,7 +146,7 @@ public class NettyUdpTransportLayer implements TransportLayer {
                 // do not want to do additional processing here
             } else {
                 // packet sending failed
-                log.error("Failed to send message to {}", address);
+                log.error("Failed to send message to {}: {}", address, future.cause().getMessage());
             }
         });
     }

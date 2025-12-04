@@ -1,5 +1,7 @@
 package org.shavin.messages;
 
+import org.shavin.api.message.IGenericMessageSerializer;
+
 public interface IMessage {
 
     /**

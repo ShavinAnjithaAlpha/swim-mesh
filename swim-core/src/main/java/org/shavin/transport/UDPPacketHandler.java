@@ -7,6 +7,7 @@ import io.netty.channel.socket.DatagramPacket;
 import io.netty.util.ReferenceCountUtil;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.shavin.api.transport.MessageHandler;
 
 import java.net.InetSocketAddress;
 import java.util.concurrent.*;

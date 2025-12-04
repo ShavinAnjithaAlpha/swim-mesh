@@ -1,4 +1,4 @@
-package org.shavin.messages;
+package org.shavin.api.message;
 
 import io.netty.buffer.ByteBuf;
 

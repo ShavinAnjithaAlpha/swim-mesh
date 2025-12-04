@@ -2,6 +2,7 @@ package org.shavin.messages;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.handler.codec.UnsupportedMessageTypeException;
+import org.shavin.api.message.IGenericMessageSerializer;
 
 import java.io.IOException;
 

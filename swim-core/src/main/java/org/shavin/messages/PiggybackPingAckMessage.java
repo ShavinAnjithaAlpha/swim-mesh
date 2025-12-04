@@ -1,6 +1,7 @@
 package org.shavin.messages;
 
 import io.netty.buffer.ByteBuf;
+import org.shavin.api.message.IGenericMessageSerializer;
 import org.shavin.member.MembershipEvent;
 
 import java.io.IOException;
@@ -76,7 +77,7 @@ public class PiggybackPingAckMessage extends PingAckMessage implements IMessage 
 
         @Override
         public long serializedSize(PiggybackPingAckMessage pingMessage) {
-            long baseSize = BaseGossipMessage.Serializer.INSTANCE.serializedSize(pingMessage);
+            long baseSize = PingAckMessage.Serializer.INSTANCE.serializedSize(pingMessage);
             int eventsSize = pingMessage.membershipEvents.size() * (Integer.BYTES + Short.BYTES + 4 + Short.BYTES);
             return baseSize + Integer.BYTES + eventsSize; // base + length + events
         }

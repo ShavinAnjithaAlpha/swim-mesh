@@ -1,12 +1,12 @@
-package org.shavin.event;
+package org.shavin.api.event;
 
-import org.shavin.member.MemberNode;
+import org.shavin.api.member.MemberNode;
 
 /**
  * This interface defines a listener for cluster events, allowing implementing classes
  * to respond to changes in the cluster membership. The listener provides methods that
  * are invoked during specific membership lifecycle events, such as when a member joins,
- * leaves, or changes state.
+ * leaves, or changes the state.
  *
  * The `ClusterEventListener` is typically used in gossip-based cluster systems where
  * node membership is dynamically managed, and status updates are disseminated across

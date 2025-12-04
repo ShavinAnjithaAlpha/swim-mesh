@@ -1,5 +1,7 @@
 package org.shavin.member;
 
+import org.shavin.api.member.MemberNode;
+
 import java.util.List;
 
 /**

@@ -1,5 +1,3 @@
-package org.shavin.sample;
-
 import org.shavin.transport.NettyUdpTransportLayer;
 import org.shavin.transport.UDPTransportConfig;
 

@@ -2,7 +2,7 @@ package org.shavin.impl;
 
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.shavin.member.MemberNode;
+import org.shavin.api.member.MemberNode;
 import org.shavin.member.MembershipEvent;
 
 import java.util.ArrayList;
