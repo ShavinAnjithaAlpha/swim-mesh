@@ -4,6 +4,7 @@ import io.netty.buffer.ByteBuf;
 import org.shavin.api.message.IGenericMessageSerializer;
 
 import java.io.IOException;
+import java.util.Objects;
 
 public class BaseGossipMessage implements IMessage {
 
@@ -31,6 +32,18 @@ public class BaseGossipMessage implements IMessage {
     @Override
     public Class<? extends IMessage> getType() {
         return BaseGossipMessage.class;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (o == null || getClass() != o.getClass()) return false;
+        BaseGossipMessage that = (BaseGossipMessage) o;
+        return sourceNodeId == that.sourceNodeId && destinationNodeId == that.destinationNodeId;
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(sourceNodeId, destinationNodeId);
     }
 
     public static class Serializer implements IGenericMessageSerializer<BaseGossipMessage, BaseGossipMessage> {

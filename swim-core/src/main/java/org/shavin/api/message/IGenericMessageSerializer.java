@@ -18,8 +18,8 @@ public interface IGenericMessageSerializer<In, Out> {
      * Deserialized into the specified type object and return it
      *
      * @param in netty bytebuffer instance from deserialization needs to happen
-     * @return type being returned after deserialization process
-     * @throws IOException if deserialization process fails
+     * @return type being returned after the deserialization process
+     * @throws IOException if the deserialization process fails
      */
     Out deserialize(ByteBuf in) throws IOException;
 

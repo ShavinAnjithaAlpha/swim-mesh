@@ -62,7 +62,7 @@ public class StandardGossipClusterImpl implements GossipCluster {
     private final List<MemberNode> members = new CopyOnWriteArrayList<>();
     private final Set<Integer> knownMemberIds = ConcurrentHashMap.newKeySet();
     private final List<ClusterEventListener> listeners = new CopyOnWriteArrayList<>();
-    private final MembershipEventStore eventStore = MembershipEventStore.getInstance();
+    private final MembershipEventStore eventStore;
 
     private final TransportLayer transportLayer;
     private final MemberSelection memberSelection;
@@ -89,6 +89,8 @@ public class StandardGossipClusterImpl implements GossipCluster {
         } else {
             this.memberSelection = new RoundRobinMemberSelector(members, nodeId);
         }
+
+        this.eventStore = MembershipEventStore.getInstance(members, threadFactory);
     }
 
     public StandardGossipClusterImpl(int nodeId, int port, String[] seeds, TransportLayer transportLayer) {
@@ -346,12 +348,13 @@ public class StandardGossipClusterImpl implements GossipCluster {
                 knownMemberIds.remove(event.nodeId());
 
                 // notify the listeners if the member is removed from the member list
-                if (removed) notifyEvents(event);
+                 if (removed) notifyEvents(event);
             } else if (event.type() == MembershipEvent.Type.FAILURE) {
                 // mark as node is failed if the node is in the local member list
                 members.stream().filter(member -> member.id() == event.nodeId()).findFirst()
                         .ifPresent(member -> {
                             member.setStatus(MemberNode.MemberStatus.DOWN);
+                            member.increaseIncarnationNumber();
                             notifyEvents(event); // notify the listeners about the failure
                         });
             } else if (event.type() == MembershipEvent.Type.RESTORE) {
@@ -496,6 +499,8 @@ public class StandardGossipClusterImpl implements GossipCluster {
                 clusterEventListener.onMemberLeft(memberNode);
             } else if (event.type() == MembershipEvent.Type.FAILURE) {
                 clusterEventListener.onMemberFailed(memberNode);
+            } else if (event.type() == MembershipEvent.Type.RESTORE) {
+                clusterEventListener.onMemberRevived(memberNode);
             }
         });
     }

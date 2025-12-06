@@ -16,7 +16,7 @@ import java.util.Objects;
 public class MemberNode {
 
     public enum MemberStatus {
-        UNKNOWN, UP, SUSPICIOUS, DOWN
+        UNKNOWN, UP, SUSPICIOUS, DOWN, LEAVED
     }
 
     private final int id;

@@ -6,6 +6,7 @@ import org.shavin.api.message.IGenericMessageSerializer;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 public class MessageFlags implements Cloneable {
@@ -62,6 +63,26 @@ public class MessageFlags implements Cloneable {
 
         return clonedObject;
 
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (o == null || getClass() != o.getClass()) return false;
+        MessageFlags that = (MessageFlags) o;
+
+        if (flags.size() != that.flags.size()) return false;
+        // compare every flag two objects have
+        for (MessageFlag flag: flags) {
+            if (!that.hasFlag(flag)) return false;
+        }
+
+        return true;
+
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hashCode(flags);
     }
 
     public final static class Serializer implements IGenericMessageSerializer<MessageFlags, MessageFlags> {

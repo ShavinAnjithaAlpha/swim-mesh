@@ -145,7 +145,12 @@ public class GossipClusterBuilder {
         }
 
         // convert the seed nodes list to an array for easier use in the cluster implementation
-        String[] seedNodesArray = seedNodes.toArray(new String[0]);
+        String[] seedNodesArray;
+        if (seedNodes.isEmpty()) {
+            seedNodesArray = new String[] {};
+        } else {
+            seedNodesArray = seedNodes.toArray(new String[0]);
+        }
         return new StandardGossipClusterImpl(nodeId, port, seedNodesArray, transportLayer, threadFactory, nextMemberSelectionStrategy);
     }
 

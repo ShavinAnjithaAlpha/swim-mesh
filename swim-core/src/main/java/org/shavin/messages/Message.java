@@ -93,7 +93,15 @@ public class Message {
         public static Header deserializeHeader(ByteBuf in) throws IOException {
             in.readInt(); // skip header size
             MessageVersion version = MessageVersion.Serializer.serializer.deserialize(in);
+            if (version == null) {
+                throw new IOException("Unsupported message version");
+            }
+
             MessageType type = MessageType.Serializer.serializer.deserialize(in);
+            if (type == null) {
+                throw new IOException("Invalid message type");
+            }
+
             long timestamp = in.readLong();
             MessageFlags flags = MessageFlags.Serializer.serializer.deserialize(in);
 

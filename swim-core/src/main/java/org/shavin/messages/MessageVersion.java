@@ -43,6 +43,9 @@ public enum MessageVersion {
     }
 
     public static MessageVersion fromId(byte id) {
+        if (id < 0 || id >= values().length) {
+            return null;
+        }
         return values()[id];
     }
 

@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 public class PingAckMessage extends BaseGossipMessage implements IMessage {
 
@@ -56,6 +57,19 @@ public class PingAckMessage extends BaseGossipMessage implements IMessage {
     @Override
     public Class<? extends IMessage> getType() {
         return PingAckMessage.class;
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (o == null || getClass() != o.getClass()) return false;
+        if (!super.equals(o)) return false;
+        PingAckMessage that = (PingAckMessage) o;
+        return sequenceNumber == that.sequenceNumber && Objects.equals(events, that.events);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(super.hashCode(), sequenceNumber, events);
     }
 
     @Override
