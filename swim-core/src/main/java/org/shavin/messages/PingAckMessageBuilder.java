@@ -74,4 +74,19 @@ public class PingAckMessageBuilder {
         return new Message(header, pingMessage);
     }
 
+    public static Message attachCustomUserDataPiggyBacks(PingAckMessage pingMessage, List<CustomUserData> data) {
+        // create message flags with a piggyback flag
+        MessageFlags messageFlags = new MessageFlags();
+        messageFlags.addFlag(MessageFlags.MessageFlag.PIGGYBACKING);
+
+        Header header = new Header(MessageType.PING, MessageVersion.VERSION_1, messageFlags);
+        PingAckMessage pingAckMessage = new PingAckMessage(
+                pingMessage.sourceNodeId(),
+                pingMessage.destinationNodeId(),
+                pingMessage.sequenceNumber());
+        pingAckMessage.addCustomUserData(data);
+
+        return new Message(header, pingAckMessage);
+    }
+
 }

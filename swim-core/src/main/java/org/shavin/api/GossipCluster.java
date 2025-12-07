@@ -44,6 +44,14 @@ public interface GossipCluster {
      */
     void addListener(ClusterEventListener listener);
 
+    /**
+     * Sends data to the cluster.
+     *
+     * @param data the data to be sent; must be a non-null byte array containing the information
+     *             to be transmitted to the cluster.
+     */
+    void sendData(byte[] data);
+
     /** * Simulation Only: Force this node to stop responding to simulate a crash.
      * In a real app, you would just kill the process.
      */

@@ -65,4 +65,13 @@ public interface ClusterEventListener {
      */
     void onMemberLeft(MemberNode node);
 
+    /**
+     * Invoked when custom user data is received. This method processes the byte array of data
+     * that is sent to the cluster or an individual node.
+     *
+     * @param data the byte array representing the received data. The data could include
+     *             serialized objects, cluster messages, or any other protocol-specific content.
+     */
+    void onReceiveData(byte[] data);
+
 }

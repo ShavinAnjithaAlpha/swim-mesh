@@ -17,6 +17,7 @@ public class PingAckMessage extends BaseGossipMessage implements IMessage {
 
     private final long sequenceNumber;
     private final List<MembershipEvent> events;
+    private List<CustomUserData> customUserData = null;
 
     public PingAckMessage(int sourceNodeId, int destinationNodeId, long sequenceNumber) {
         super(sourceNodeId, destinationNodeId);
@@ -36,6 +37,24 @@ public class PingAckMessage extends BaseGossipMessage implements IMessage {
 
     public PingAckMessage(BaseGossipMessage baseGossipMessage, long sequenceNumber, List<MembershipEvent> events) {
         this(baseGossipMessage.sourceNodeId(), baseGossipMessage.destinationNodeId(), sequenceNumber, events);
+    }
+
+    public void addCustomUserData(List<CustomUserData> customUserData) {
+        this.customUserData = customUserData;
+    }
+
+    public int totalCustomPayloadSizeInBytes() {
+        int bytes = 0;
+        if (customUserData != null) {
+            for (CustomUserData userData : customUserData) {
+                bytes += userData.getData().length;
+            }
+        }
+        return bytes;
+    }
+
+    public List<CustomUserData> getCustomUserData() {
+        return customUserData == null ? List.of() : customUserData;
     }
 
     public long sequenceNumber() {
@@ -97,6 +116,15 @@ public class PingAckMessage extends BaseGossipMessage implements IMessage {
                     out.writeShort(event.socketAddress().getPort());
                 }
             }
+
+            out.writeInt(pingMessage.customUserData == null ? 0 : pingMessage.customUserData.size()); // write the length of the custom data
+            if (pingMessage.customUserData != null && !pingMessage.customUserData.isEmpty()) {
+                for (CustomUserData userData : pingMessage.customUserData) {
+                    // write the length of the byte custom payload
+                    out.writeInt(userData.getData().length);
+                    out.writeBytes(userData.getData());
+                }
+            }
         }
 
         @Override
@@ -119,14 +147,30 @@ public class PingAckMessage extends BaseGossipMessage implements IMessage {
                 membershipEvents.add(membershipEvent);
             }
 
-            return new PingAckMessage(base, sequenceNumber, membershipEvents);
+            int customUserDataSize = in.readInt();// read the size of the custom data
+            List<CustomUserData> customUserData = new ArrayList<>(customUserDataSize);
+            for (int i = 0; i < customUserDataSize; i++) {
+                // read the size of the payload first
+                int payloadSize = in.readInt();
+                byte[] payload = new byte[payloadSize];
+                in.readBytes(payload);
+                customUserData.add(new CustomUserData(payload));
+            }
+
+            PingAckMessage pingAckMessage = new PingAckMessage(base, sequenceNumber, membershipEvents);
+            if (customUserDataSize > 0) {
+                pingAckMessage.addCustomUserData(customUserData);
+            }
+
+            return pingAckMessage;
         }
 
         @Override
         public long serializedSize(PingAckMessage pingMessage) {
             long baseSize = BaseGossipMessage.Serializer.INSTANCE.serializedSize(pingMessage) + Long.BYTES;
             int eventsSize = (pingMessage.events == null ? 0 : pingMessage.events.size()) * (Integer.BYTES + Short.BYTES + 4 + Short.BYTES);
-            return baseSize + Integer.BYTES + eventsSize; // base + length + events
+            int customPayloadSize = pingMessage.totalCustomPayloadSizeInBytes() + (pingMessage.customUserData == null ? 0 : pingMessage.customUserData.size()) * Integer.BYTES;
+            return baseSize + Integer.BYTES + eventsSize + Integer.BYTES + customPayloadSize; // base + length + events
         }
     }
 }

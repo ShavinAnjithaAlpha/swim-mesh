@@ -63,6 +63,7 @@ public class StandardGossipClusterImpl implements GossipCluster {
     private final Set<Integer> knownMemberIds = ConcurrentHashMap.newKeySet();
     private final List<ClusterEventListener> listeners = new CopyOnWriteArrayList<>();
     private final MembershipEventStore eventStore;
+    private CustomDataManager customDataManager;
 
     private final TransportLayer transportLayer;
     private final MemberSelection memberSelection;
@@ -91,6 +92,7 @@ public class StandardGossipClusterImpl implements GossipCluster {
         }
 
         this.eventStore = MembershipEventStore.getInstance(members, threadFactory);
+        this.customDataManager = new CustomDataManager(listeners, scheduledExecutorService, members);
     }
 
     public StandardGossipClusterImpl(int nodeId, int port, String[] seeds, TransportLayer transportLayer) {
@@ -172,6 +174,13 @@ public class StandardGossipClusterImpl implements GossipCluster {
                 case PING -> {
                     // send an ACK message back to the sender of the ping message
                     PingAckMessage pingMessage = (PingAckMessage) message.payload();
+                    // check whether the message has piggyback data
+                    if (message.header().flags().hasFlag(MessageFlags.MessageFlag.PIGGYBACKING)) {
+                        // get the custom user data out of the ping message
+                        List<CustomUserData> userData = pingMessage.getCustomUserData();
+                        // handle the piggyback data using the custom data manager
+                        customDataManager.onReceive(userData);
+                    }
                     sendAck(pingMessage, sender);
                     break;
                 }
@@ -434,8 +443,10 @@ public class StandardGossipClusterImpl implements GossipCluster {
         long sequenceNumber = sequenceGenerator.incrementAndGet();
         // send a PING message to that member node
         Message pingMessage = PingAckMessageBuilder.pingMessageForNode(nodeId, selectedNode.id(), sequenceNumber);
+        // add custom user data payloads if exists to the ping message
         PingAckMessage payload = (PingAckMessage) pingMessage.payload();
-
+        pingMessage = PingAckMessageBuilder.attachCustomUserDataPiggyBacks(payload, customDataManager.getDataToSend());
+        payload = (PingAckMessage) pingMessage.payload();
 
         try {
             byte[] bytes = messageToBytes(pingMessage);
@@ -518,6 +529,12 @@ public class StandardGossipClusterImpl implements GossipCluster {
                 clusterEventListener.onMemberRevived(memberNode);
             }
         });
+    }
+
+    @Override
+    public void sendData(byte[] data) {
+        // pass the data to the custom data manager
+        customDataManager.broadcastData(data);
     }
 
     @Override
