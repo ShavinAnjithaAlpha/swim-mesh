@@ -159,9 +159,10 @@ public class StandardGossipClusterImpl implements GossipCluster {
     }
 
     private void handlePacket(byte[] data, InetSocketAddress sender) {
+        ByteBuf buffer = null;
         try {
             // parse the byte array as a bytebuffer
-            ByteBuf buffer = allocater.buffer(data.length);
+            buffer = allocater.buffer(data.length);
             buffer.writeBytes(data);
             // deserialize the message
             Message message = Message.Serializer.deserialize(buffer);
@@ -263,6 +264,8 @@ public class StandardGossipClusterImpl implements GossipCluster {
             }
         } catch (IOException exception) {
             log.error(exception.getMessage(), exception);
+        } finally {
+            buffer.release();
         }
     }
 
@@ -330,8 +333,6 @@ public class StandardGossipClusterImpl implements GossipCluster {
 
     private void handlePiggybackData(List<MembershipEvent> events) {
         events.forEach(event -> {
-            // merge the events with the local event store
-            eventStore.enqueueEvent(event);
             // update the memberlist according to the events received
             if (event.type() == MembershipEvent.Type.JOIN) {
                 // check of the member is in the local member list and add if its not
@@ -339,6 +340,9 @@ public class StandardGossipClusterImpl implements GossipCluster {
                     members.add(new MemberNode(event.nodeId(), event.socketAddress(), MemberNode.MemberStatus.UP));
                     knownMemberIds.add(event.nodeId());
 
+                    // add to the event store
+                    eventStore.enqueueEvent(event);
+                    // notify the listeners
                     notifyEvents(event);
                 }
             } else if (event.type() == MembershipEvent.Type.LEAVE) {
@@ -348,20 +352,31 @@ public class StandardGossipClusterImpl implements GossipCluster {
                 knownMemberIds.remove(event.nodeId());
 
                 // notify the listeners if the member is removed from the member list
-                 if (removed) notifyEvents(event);
+                 if (removed) {
+                     notifyEvents(event);
+                     eventStore.enqueueEvent(event);
+                 }
             } else if (event.type() == MembershipEvent.Type.FAILURE) {
                 // mark as node is failed if the node is in the local member list
                 members.stream().filter(member -> member.id() == event.nodeId()).findFirst()
                         .ifPresent(member -> {
+                            if (member.status() == MemberNode.MemberStatus.DOWN) {
+                                return;
+                            }
                             member.setStatus(MemberNode.MemberStatus.DOWN);
                             member.increaseIncarnationNumber();
+                            eventStore.enqueueEvent(new MembershipEvent(MembershipEvent.Type.FAILURE, member));
                             notifyEvents(event); // notify the listeners about the failure
                         });
             } else if (event.type() == MembershipEvent.Type.RESTORE) {
                 members.stream().filter(member -> member.id() == event.nodeId()).findFirst()
                         .ifPresent(member -> {
+                            if (member.status() == MemberNode.MemberStatus.UP) {
+                                return;
+                            }
                             member.setStatus(MemberNode.MemberStatus.UP);
                             member.increaseIncarnationNumber();
+                            eventStore.enqueueEvent(new MembershipEvent(MembershipEvent.Type.RESTORE, member));
                             notifyEvents(event);
                         });
             }

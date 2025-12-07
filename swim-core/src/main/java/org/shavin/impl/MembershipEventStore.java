@@ -10,7 +10,6 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Store for keep the membership events in a buffer.
@@ -61,10 +60,10 @@ public class MembershipEventStore {
     }
 
     public void enqueueEvent(MembershipEvent membershipEvent) {
-        // merge the events with the same node id together, according to the merge logic below
+        // merge the events with the same node id, according to the merge logic below
         membershipEventMap.merge(membershipEvent.nodeId(), membershipEvent, (oldEvent, event) -> {
             // keep the event with the highest incarnation number
-            if (oldEvent.incarnationNumber() > event.incarnationNumber()) {
+            if (oldEvent.incarnationNumber() >= event.incarnationNumber()) {
                 return oldEvent;
             } else {
                 return event;
@@ -94,7 +93,7 @@ public class MembershipEventStore {
                 eventIterator.remove();
             }
 
-            if (estimatedBytes > (SAFE_MTU - 42)) {
+            if (estimatedBytes >= (SAFE_MTU - 42)) {
                 break;
             }
         }
