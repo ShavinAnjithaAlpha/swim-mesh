@@ -1,0 +1,113 @@
+# .github/workflows/build.yml
+name: Build Swim Core
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'swim-core/**'
+      - '.github/workflows/build.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'swim-core/**'
+      - '.github/workflows/build.yml'
+
+jobs:
+  build:
+    name: Build and Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: swim-core
+
+    strategy:
+      matrix:
+        java-version: [17]
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ matrix.java-version }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ matrix.java-version }}
+          distribution: 'temurin'
+          cache: 'maven'
+
+      - name: Cache Maven packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2
+          key: ${{ runner.os }}-m2-${{ hashFiles('**/pom.xml') }}
+          restore-keys: ${{ runner.os }}-m2
+
+      - name: Build with Maven
+        run: mvn -B clean install -DskipTests
+        working-directory: swim-core
+
+      - name: Run Tests
+        run: mvn -B test
+        working-directory: swim-core
+
+#  quality:
+#    name: Code Quality Check
+#    runs-on: ubuntu-latest
+#    defaults:
+#      run:
+#        working-directory: swim-core
+#
+#    steps:
+#      - uses: actions/checkout@v4
+#
+#      - name: Set up JDK
+#        uses: actions/setup-java@v4
+#        with:
+#          java-version: '17'
+#          distribution: 'temurin'
+#          cache: 'maven'
+#
+#      - name: SpotBugs Check
+#        run: mvn com.github.spotbugs:spotbugs-maven-plugin:check
+#
+#      - name: PMD Check
+#        run: mvn pmd:check
+#
+#      - name: Checkstyle
+#        run: mvn checkstyle:check
+
+#  publish:
+#    name: Publish Snapshot
+#    needs: [build, quality]
+#    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+#    runs-on: ubuntu-latest
+#    defaults:
+#      run:
+#        working-directory: swim-core
+#
+#    steps:
+#      - uses: actions/checkout@v4
+#
+#      - name: Set up JDK
+#        uses: actions/setup-java@v4
+#        with:
+#          java-version: '17'
+#          distribution: 'temurin'
+#          cache: 'maven'
+#          server-id: ossrh
+#          server-username: MAVEN_USERNAME
+#          server-password: MAVEN_PASSWORD
+#          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+#          gpg-passphrase: MAVEN_GPG_PASSPHRASE
+#
+#      - name: Publish to Maven Central
+#        run: |
+#          mvn -B deploy -P release
+#        env:
+#          MAVEN_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+#          MAVEN_PASSWORD: ${{ secrets.OSSRH_TOKEN }}
+#          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+
