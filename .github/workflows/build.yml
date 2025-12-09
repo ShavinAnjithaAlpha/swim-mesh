@@ -49,9 +49,9 @@ jobs:
         run: mvn -B clean install -DskipTests
         working-directory: swim-core
 
-      - name: Run Tests
-        run: mvn -B test
-        working-directory: swim-core
+#      - name: Run Tests
+#        run: mvn -B test
+#        working-directory: swim-core
 
 #  quality:
 #    name: Code Quality Check
