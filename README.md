@@ -5,16 +5,39 @@
 
 ## Overview
 
-**SWIM-Core** is a high-performance, modular **Java implementation** of the **SWIM protocol** (Scalable Weakly-consistent Infection-style Membership).  
-It provides:
+**SWIM-Core** is a high-performance, modular Java implementation of the **SWIM protocol** (Scalable Weakly Consistent Infection-Style Membership) with additional features designed for modern distributed systems.
 
-- Cluster membership management
-- Gossip-based failure detection
-- Suspicion-based false-positive mitigation
-- A fully **extensible transport layer** (plug in your own UDP/TCP/Netty/etc.)
-- Optional simulation + visualization tools for experimenting with SWIM dynamics
+This library integrates easily into distributed applications requiring **cluster membership, failure detection, and lightweight cluster-wide event dissemination**. As the name suggests, SWIM-Core is optimized for large clusters—scaling to thousands of nodes—while maintaining low communication overhead and fast membership convergence.
 
-The library is designed to be embedded into distributed systems, microservices, and research environments.
+The design prioritizes **flexibility**: developers can replace the default high-performance Netty-based UDP transport with any custom transport layer. This makes the library suitable not only for production systems, but also for academic experimentation, simulations, and research on distributed protocols.
+
+### Key Features
+
+1. Cluster Membership
+
+ - Fully decentralized, peer-to-peer membership management.
+ - Nodes eventually discover all other nodes in the cluster using gossip-based dissemination.
+ - Seed nodes help bootstrap the membership information spread.
+ - Efficient and lightweight communication tailored for large-scale clusters.
+
+2. Failure Detection
+
+ - Implements SWIM’s failure detection protocol to identify crashed or unreachable nodes.
+ - Supports automatic recovery handling and member reinstatement.
+ - Enables applications to make decisions based on up-to-date cluster health.
+
+3. Custom Data Dissemination
+
+ - Provides a mechanism for disseminating custom application metadata across the cluster using SWIM’s gossip model.
+ - Ensures eventual delivery and single processing of each message.
+ - Ideal for lightweight status broadcasts (e.g., leader announcements, metadata syncing).
+ - Not intended for large data transfer; message size limits depend on the underlying transport.
+
+4. Pluggable Transport Layer
+
+ - Fully modular transport system; developers can plug in custom networking backends. 
+ - Default transport: a Netty-based high-performance UDP layer designed for speed and low overhead. 
+ - Support for implementing TCP, secure transport, or experimental simulation layers.
 
 ---
 
@@ -33,22 +56,7 @@ It is widely used in real systems such as Serf, Consul, Lifeguard, Ray, and many
 **Reference Paper:**  
 **"SWIM: Scalable Weakly-consistent Infection-style Process Group Membership"**  
 Indranil Gupta, Tushar D. Chandra, Alan L. Demers, Robbert van Renesse (Cornell University, 2001)  
-PDF (searchable title): *SWIM process group membership protocol*
-
----
-
-## Features
-
-- Pure **Java** implementation
-- Fully modular architecture
-- Pluggable transport layer (implement your own networking backend)
-- Gossip-based membership dissemination
-- Suspicion & indirect probing
-- Optional simulation engine
-- Optional visualization UI
-- Minimal dependencies and easy embedding
-
----
+[PDF](https://www.cs.cornell.edu/projects/Quicksilver/public_pdfs/SWIM.pdf): *SWIM process group membership protocol*
 
 ## Installation
 
@@ -276,26 +284,6 @@ GossipCluster cluster = new GossipClusterBuilder()
     .build();
 ```
 
-# Architecture
-
-### Protocol Layer
-Implements SWIM logic: pings, ping-req, gossip, updates, suspicion.
-
-### Transport Layer (Extensible)
-Custom pluggable transports via a clean Java interface.
-
-### Gossip Engine
-Membership dissemination with infection-style propagation.
-
-### Suspicion Module
-Reduces false positives using suspicion timeouts.
-
-### Simulation Module
-Allows running virtual clusters and collecting metrics.
-
-### Visualization UI
-Shows real-time cluster membership and message flow.
-
 # Contributing
 
 Contributions are welcome!
@@ -322,17 +310,9 @@ Please ensure:
 If you discover a security issue:
 Do not open a public GitHub issue
 
-Email: security@yourdomain.com
+Email: shavinanjitha.ch@gmail.com
 
 We follow responsible disclosure guidelines.
-
-# Roadmap
-
- - SWIM+ / Lifeguard enhancements
- - Metrics + tracing (OpenTelemetry)
- - Distributed simulation mode
- - Multi-transport hybrid support
- - Java Native Image optimization
 
 # License
 
