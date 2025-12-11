@@ -1,0 +1,95 @@
+version: '3.8'
+
+services:
+  # --- The Seed Node ---
+  seed-node:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: seed-node
+    environment:
+      - NODE_ID=1
+      - NODE_PORT=5000
+      - SEEDS=seed-node:5000
+    networks:
+      - gossip-net
+
+  # --- Member 1 ---
+  node-1:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: node-1
+    environment:
+      - NODE_ID=2
+      - NODE_PORT=5000
+      - SEEDS=seed-node:5000  # Points to the seed container
+    depends_on:
+      - seed-node
+    networks:
+      - gossip-net
+
+  # --- Member 2 ---
+  node-2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: node-2
+    environment:
+      - NODE_ID=3
+      - NODE_PORT=5000
+      - SEEDS=seed-node:5000
+    depends_on:
+      - seed-node
+    networks:
+      - gossip-net
+
+  # --- Member 3 ---
+  node-3:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: node-3
+    environment:
+      - NODE_ID=4
+      - NODE_PORT=5000
+      - SEEDS=seed-node:5000
+    depends_on:
+      - seed-node
+    networks:
+      - gossip-net
+
+#  # --- Member 4 ---
+#  node-4:
+#    build:
+#      context: .
+#      dockerfile: Dockerfile
+#    container_name: node-4
+#    environment:
+#      - NODE_ID=5
+#      - NODE_PORT=5000
+#      - SEEDS=seed-node:5000
+#    depends_on:
+#      - seed-node
+#    networks:
+#      - gossip-net
+#
+#  # --- Member 5 ---
+#  node-5:
+#    build:
+#      context: .
+#      dockerfile: Dockerfile
+#    container_name: node-5
+#    environment:
+#      - NODE_ID=6
+#      - NODE_PORT=5000
+#      - SEEDS=seed-node:5000
+#    depends_on:
+#      - seed-node
+#    networks:
+#      - gossip-net
+
+# Define a custom bridge network
+networks:
+  gossip-net:
+    driver: bridge

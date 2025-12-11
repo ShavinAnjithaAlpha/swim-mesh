@@ -10,6 +10,7 @@
     <packaging>pom</packaging>
     <modules>
         <module>swim-core</module>
+        <module>swim-simulation</module>
     </modules>
 
     <properties>
