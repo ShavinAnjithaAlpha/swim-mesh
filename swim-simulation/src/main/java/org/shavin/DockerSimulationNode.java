@@ -1,9 +1,9 @@
 package org.shavin;
 
-import org.shavin.api.GossipCluster;
-import org.shavin.api.GossipClusterBuilder;
-import org.shavin.api.event.ClusterEventListener;
-import org.shavin.api.member.MemberNode;
+import org.shavin.swim.api.GossipCluster;
+import org.shavin.swim.api.GossipClusterBuilder;
+import org.shavin.swim.api.event.ClusterEventListener;
+import org.shavin.swim.api.member.MemberNode;
 
 import java.net.InetAddress;
 import java.net.UnknownHostException;

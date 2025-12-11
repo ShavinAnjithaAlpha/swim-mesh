@@ -21,8 +21,8 @@
 
         <dependency>
             <groupId>org.shavin</groupId>
-            <artifactId>swim-core</artifactId>
-            <version>1.0-SNAPSHOT</version>
+            <artifactId>swim</artifactId>
+            <version>0.1.0-SNAPSHOT</version>
         </dependency>
 
         <!-- https://mvnrepository.com/artifact/org.junit.jupiter/junit-jupiter-api -->
