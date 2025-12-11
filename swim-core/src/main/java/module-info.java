@@ -8,9 +8,9 @@ module org.shavin.swim.core {
     requires io.netty.transport.classes.epoll;
     requires org.slf4j;
 
-    exports org.shavin.api;
-    exports org.shavin.api.message;
-    exports org.shavin.api.member;
-    exports org.shavin.api.transport;
-    exports org.shavin.api.event;
+    exports org.shavin.swim.api;
+    exports org.shavin.swim.api.message;
+    exports org.shavin.swim.api.member;
+    exports org.shavin.swim.api.transport;
+    exports org.shavin.swim.api.event;
 }
