@@ -136,7 +136,10 @@ public class StandardGossipClusterImpl implements GossipCluster {
             // start the scheduler threads at a fixed rate
             scheduledExecutorService.scheduleAtFixedRate(this::executeSWIMProtocol, PING_INITIAL_DELAY_MS, PING_INTERVAL_MS, java.util.concurrent.TimeUnit.MILLISECONDS);
 
-            log.info("successfully started the gossip cluster at nodeId: " + nodeId);
+            // register the shutdown hook
+            registerShutdownHook();
+
+            log.info("successfully started the gossip cluster at nodeId: {}", nodeId);
         } catch (InterruptedException | ExecutionException exception) {
             log.error(exception.getMessage(), exception);
             state = State.FAILED;
@@ -269,6 +272,30 @@ public class StandardGossipClusterImpl implements GossipCluster {
                         // if target address found forward the ack message to the target node
                         transportLayer.send(targetNodeAddress, messageToBytes(message));
                     }
+                }
+
+                case NODE_STATUS -> {
+                    NodeStatusMessage nodeStatusMessage = (NodeStatusMessage) message.payload();
+                    // find the member with the node if of the message
+                    MemberNode memberNode = members.stream().filter(members -> members.id() == nodeStatusMessage.getNodeId()).findFirst().orElse(null);
+                    if (memberNode == null) {
+                        log.warn("No member node found for the node id: {}, Thus ignore the processing message", nodeStatusMessage.getNodeId());
+                        return;
+                    }
+
+                    memberNode.setStatus(nodeStatusMessage.getMemberStatus().toMemberStatus());
+                    memberNode.increaseIncarnationNumber();
+                    // create a membership event of the node status event
+                    MembershipEvent newMembershipEvent = new MembershipEvent(nodeStatusMessage.getMemberStatus().toMembershipEventType() ,memberNode);
+                    eventStore.enqueueEvent(newMembershipEvent); // add a new event to the event store
+                    notifyEvents(newMembershipEvent); // notify the listeners about the new node status
+                    break;
+                }
+
+                default -> {
+                    // invalid message format
+                    // ignores the message
+                    log.warn("Unrecognized message type: {}, drop the message", message.payload());
                 }
             }
         } catch (IOException exception) {
@@ -529,6 +556,41 @@ public class StandardGossipClusterImpl implements GossipCluster {
                 clusterEventListener.onMemberRevived(memberNode);
             }
         });
+    }
+
+    private void sendNodeStatus(MemberNode memberNode, NodeStatusMessage.Status memberStatus) throws IOException {
+        Message nodeStatusMessage = NodeStatusMessage.Builder.toNodeStatusMessage(nodeId, memberNode.id(), memberStatus);
+        byte[] bytes = messageToBytes(nodeStatusMessage);
+        this.transportLayer.send(memberNode.address(), bytes);
+    }
+
+    /**
+     * register a shutdown hook into the gossip cluster to IMMEDIATELY send a LEAVE message to randomly selected
+     * member nodes from the member list when JVM revives a SIGTERM signal from ordinal shutdown or user interrupt
+     * this will help to immediately identified other nodes to, that this node is LEAVE the cluster without
+     * other nodes having to wait for the normal mechanism
+     */
+    private void registerShutdownHook() {
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            if (members.isEmpty()) {
+                this.shutdown();
+                return;
+            }
+
+            // select the members to send the LEAVE status
+            MemberNode memberToNotify = this.members.get(0);
+
+            try {
+                // send the LEAVE message to selected nodes
+                sendNodeStatus(memberToNotify, NodeStatusMessage.Status.LEAVE);
+            } catch (IOException exception) {
+                log.error(exception.getMessage(), exception);
+            } finally {
+                // shutdown the gossip cluster if running
+                this.shutdown();
+            }
+
+        }));
     }
 
     @Override
