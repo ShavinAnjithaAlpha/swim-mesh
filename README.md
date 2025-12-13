@@ -284,6 +284,22 @@ GossipCluster cluster = new GossipClusterBuilder()
     .build();
 ```
 
+# Positioning & Scope
+
+SWIM-Mesh is a lightweight, modular, and educational Java implementation of the SWIM protocol with some additional features.
+
+While production-grade SWIM implementations exist in platforms like HashiCorp Serf or Akka, this library focuses on:
+
+ - Modularity & Flexibility: Pluggable transport layers allow users to replace the default UDP network layer with TCP, secure channels, or custom simulation layers.
+
+ - Ease of Integration: Designed for small to medium clusters (from tens to thousands of nodes) with minimal setup and dependencies.
+
+ - Educational & Experimental Use: Ideal for learning, research, and testing distributed systems concepts without the overhead of enterprise-level frameworks.
+
+ - Custom Data Dissemination: Enables lightweight propagation of cluster metadata or status updates using gossip-based dissemination.
+
+**Note**: This library is not yet optimized for extremely large-scale production deployments. Its goal is to provide a clear, modular, and extendable framework for developers and researchers to understand and experiment with SWIM-based cluster membership and failure detection.
+
 # Contributing
 
 Contributions are welcome!
