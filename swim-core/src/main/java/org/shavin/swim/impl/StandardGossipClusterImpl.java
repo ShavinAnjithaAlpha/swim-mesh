@@ -46,10 +46,7 @@ import java.util.concurrent.atomic.AtomicLong;
 public class StandardGossipClusterImpl implements GossipCluster {
     private final static Logger log = LoggerFactory.getLogger(StandardGossipClusterImpl.class);
 
-    private final static int PING_INTERVAL_MS = 1000;
     private final static int PING_INITIAL_DELAY_MS = 5000;
-    private final static int DEFAULT_TIMEOUT_MS = 1000;
-    private final static int DEFAULT_INDIRECT_PING_REQUEST_TIMEOUT_MS = 2500;
     private final static int SAFE_MTU = 1400;
 
     private static enum State {
@@ -59,6 +56,9 @@ public class StandardGossipClusterImpl implements GossipCluster {
     private final int nodeId;
     private final int port;
     private final String[] seeds;
+    private final int pingIntervalInMs;
+    private final int pingTimeoutInMs;
+    private final int indirectPingRequestTimeoutInMs;
 
     private State state = State.NOT_STARTED;
 
@@ -79,12 +79,17 @@ public class StandardGossipClusterImpl implements GossipCluster {
     private final Map<Long, Long> pendingAcks = new ConcurrentHashMap<>();
     private final Map<Long, Long> indirectPendingAcks = new ConcurrentHashMap<>();
 
-    public StandardGossipClusterImpl(int nodeId, int port, String[] seeds, TransportLayer transportLayer, ThreadFactory threadFactory, GossipClusterBuilder.NextMemberSelectionStrategy selectionStrategy) {
+    public StandardGossipClusterImpl(int nodeId, int port, String[] seeds, TransportLayer transportLayer, ThreadFactory threadFactory, GossipClusterBuilder.NextMemberSelectionStrategy selectionStrategy,
+                                     int pingIntervalInMs, int pingTimeoutInMs, int indirectPingRequestTimeoutInMs) {
         this.nodeId = nodeId;
         this.port = port;
         this.seeds = seeds;
         this.threadFactory = threadFactory;
         this.transportLayer = transportLayer;
+
+        this.pingIntervalInMs = pingIntervalInMs;
+        this.pingTimeoutInMs = pingTimeoutInMs;
+        this.indirectPingRequestTimeoutInMs = indirectPingRequestTimeoutInMs;
 
         if (selectionStrategy == GossipClusterBuilder.NextMemberSelectionStrategy.ROUND_ROBIN_SELECTION_STRATEGY) {
             this.memberSelection = new RoundRobinMemberSelector(members, nodeId);
@@ -95,19 +100,22 @@ public class StandardGossipClusterImpl implements GossipCluster {
         }
 
         this.eventStore = MembershipEventStore.getInstance(members, threadFactory);
-        this.customDataManager = new CustomDataManager(listeners, scheduledExecutorService, members);
+        this.customDataManager = new CustomDataManager(listeners, members);
     }
 
-    public StandardGossipClusterImpl(int nodeId, int port, String[] seeds, TransportLayer transportLayer) {
-        this(nodeId, port, seeds, transportLayer, Executors.defaultThreadFactory(), GossipClusterBuilder.NextMemberSelectionStrategy.ROUND_ROBIN_SELECTION_STRATEGY);
+    public StandardGossipClusterImpl(int nodeId, int port, String[] seeds, TransportLayer transportLayer, int pingIntervalInMs, int pingTimeoutInMs, int indirectPingRequestTimeoutInMs) {
+        this(nodeId, port, seeds, transportLayer, Executors.defaultThreadFactory(), GossipClusterBuilder.NextMemberSelectionStrategy.ROUND_ROBIN_SELECTION_STRATEGY,
+                pingIntervalInMs, pingTimeoutInMs, indirectPingRequestTimeoutInMs);
     }
 
-    public StandardGossipClusterImpl(int nodeId, int port, String[] seeds) {
-        this(nodeId, port, seeds, new NettyUdpTransportLayer(UDPTransportConfig.withDefaults()), Executors.defaultThreadFactory(), GossipClusterBuilder.NextMemberSelectionStrategy.ROUND_ROBIN_SELECTION_STRATEGY);
+    public StandardGossipClusterImpl(int nodeId, int port, String[] seeds, int pingIntervalInMs, int pingTimeoutInMs, int indirectPingRequestTimeoutInMs) {
+        this(nodeId, port, seeds, new NettyUdpTransportLayer(UDPTransportConfig.withDefaults()), Executors.defaultThreadFactory(), GossipClusterBuilder.NextMemberSelectionStrategy.ROUND_ROBIN_SELECTION_STRATEGY,
+                pingIntervalInMs, pingTimeoutInMs, indirectPingRequestTimeoutInMs);
     }
 
-    public StandardGossipClusterImpl(int nodeId, int port, String[] seeds, ThreadFactory threadFactory ) {
-        this(nodeId, port, seeds, new NettyUdpTransportLayer(UDPTransportConfig.withDefaults()), threadFactory, GossipClusterBuilder.NextMemberSelectionStrategy.ROUND_ROBIN_SELECTION_STRATEGY);
+    public StandardGossipClusterImpl(int nodeId, int port, String[] seeds, ThreadFactory threadFactory, int pingIntervalInMs, int pingTimeoutInMs, int indirectPingRequestTimeoutInMs) {
+        this(nodeId, port, seeds, new NettyUdpTransportLayer(UDPTransportConfig.withDefaults()), threadFactory, GossipClusterBuilder.NextMemberSelectionStrategy.ROUND_ROBIN_SELECTION_STRATEGY,
+                pingIntervalInMs, pingTimeoutInMs, indirectPingRequestTimeoutInMs);
     }
 
     @Override
@@ -126,6 +134,7 @@ public class StandardGossipClusterImpl implements GossipCluster {
         state =  State.STARTED;
         // start the scheduler with two threads // one thread for message loop and another thread for timeouts handling
         scheduledExecutorService = Executors.newScheduledThreadPool(2, threadFactory);
+        customDataManager.start(scheduledExecutorService); // start the custom data manager
 
         // start the transport layer
         Future<Void> transportLayerFuture = this.transportLayer.start(this.port, this::handlePacket);
@@ -137,7 +146,7 @@ public class StandardGossipClusterImpl implements GossipCluster {
 
             log.info("Starting SWIM protocol execution");
             // start the scheduler threads at a fixed rate
-            scheduledExecutorService.scheduleAtFixedRate(this::executeSWIMProtocol, PING_INITIAL_DELAY_MS, PING_INTERVAL_MS, java.util.concurrent.TimeUnit.MILLISECONDS);
+            scheduledExecutorService.scheduleAtFixedRate(this::executeSWIMProtocol, PING_INITIAL_DELAY_MS, pingIntervalInMs, java.util.concurrent.TimeUnit.MILLISECONDS);
 
             // register the shutdown hook
             registerShutdownHook();
@@ -486,7 +495,7 @@ public class StandardGossipClusterImpl implements GossipCluster {
             pendingAcks.put(payload.sequenceNumber(), System.currentTimeMillis());
 
             // schedule an event to remove the ping message from the pending acks map after a timeout period
-            scheduledExecutorService.schedule(() -> checkAck(selectedNode, sequenceNumber), DEFAULT_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS);
+            scheduledExecutorService.schedule(() -> checkAck(selectedNode, sequenceNumber), pingTimeoutInMs, java.util.concurrent.TimeUnit.MILLISECONDS);
 
         } catch (IOException exception) {
             log.error(exception.getMessage(), exception);
@@ -517,7 +526,7 @@ public class StandardGossipClusterImpl implements GossipCluster {
 
             // also create a scheduled task for remove the pending ack from the state if the timeout passes
             scheduledExecutorService.schedule(() -> this.checkIndirectAck(targetNode, requestId),
-                    DEFAULT_INDIRECT_PING_REQUEST_TIMEOUT_MS, java.util.concurrent.TimeUnit.MILLISECONDS);
+                    indirectPingRequestTimeoutInMs, java.util.concurrent.TimeUnit.MILLISECONDS);
         }
     }
 
@@ -612,6 +621,7 @@ public class StandardGossipClusterImpl implements GossipCluster {
             this.state = State.STOPPED;
         } catch (Exception e) {
             log.error(e.getMessage(), e);
+            this.state = State.FAILED;
         }
     }
 

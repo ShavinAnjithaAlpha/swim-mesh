@@ -23,6 +23,10 @@ import java.util.concurrent.ThreadFactory;
  */
 public class GossipClusterBuilder {
 
+    private final static int DEFAULT_PING_INTERVAL_MS = 1000;
+    private final static int DEFAULT_TIMEOUT_MS = 1000;
+    private final static int DEFAULT_INDIRECT_PING_REQUEST_TIMEOUT_MS = 2500;
+
     public static enum NextMemberSelectionStrategy {
         RANDOM_MEMBER_SELECTION_STRATEGY,
         ROUND_ROBIN_SELECTION_STRATEGY;
@@ -30,7 +34,10 @@ public class GossipClusterBuilder {
 
     private int nodeId = -1;
     private int port;
-    private final List<String> seedNodes = new ArrayList<>();
+    private int pingIntervalInMs;
+    private int pingTimeoutInMs;
+    private int indirectPingRequestTimeoutInMs;
+    private  List<String> seedNodes = new ArrayList<>();
     private ThreadFactory threadFactory;
     private TransportLayer transportLayer;
     private MemberSelection memberSelection;
@@ -121,6 +128,46 @@ public class GossipClusterBuilder {
     }
 
     /**
+     * Sets the ping interval in milliseconds for the GossipCluster. The ping interval
+     * determines how frequently the cluster attempts to ping other nodes to detect their status.
+     *
+     * @param pingIntervalInMs the interval, in milliseconds, between successive pings. Must be a positive integer.
+     * @return the updated GossipClusterBuilder instance to allow method chaining.
+     */
+    public GossipClusterBuilder withPingIntervalInMs(int pingIntervalInMs) {
+        this.pingIntervalInMs = pingIntervalInMs;
+        return this;
+    }
+
+    /**
+     * Sets the ping timeout in milliseconds for the GossipCluster.
+     * The ping timeout determines the maximum time to wait for a response
+     * from a node before considering the ping attempt failed.
+     *
+     * @param pingTimeoutInMs the timeout duration, in milliseconds, for a ping attempt.
+     *                        Must be a positive integer.
+     * @return the updated GossipClusterBuilder instance to allow chaining of additional configuration methods.
+     */
+    public GossipClusterBuilder withPingTimeoutInMs(int pingTimeoutInMs) {
+        this.pingTimeoutInMs = pingTimeoutInMs;
+        return this;
+    }
+
+    /**
+     * Sets the timeout duration for indirect ping requests in the GossipCluster.
+     * Indirect pings are used as part of the failure detection mechanism to verify
+     * if a node is reachable by seeking assistance from other nodes.
+     *
+     * @param indirectPingRequestTimeoutInMs the timeout duration, in milliseconds,
+     *                                       for indirect ping requests. Must be a positive integer.
+     * @return the updated GossipClusterBuilder instance to allow chaining of additional configuration methods.
+     */
+    public GossipClusterBuilder withIndirectPingRequestTimeoutInMs(int indirectPingRequestTimeoutInMs) {
+        this.indirectPingRequestTimeoutInMs = indirectPingRequestTimeoutInMs;
+        return this;
+    }
+
+    /**
      * Builds and returns an instance of {@code GossipCluster} with the specified configuration.
      * This method validates the configuration parameters, including that a valid node ID
      * has been specified. It also initializes default values for the thread factory
@@ -144,6 +191,18 @@ public class GossipClusterBuilder {
             this.transportLayer = new NettyUdpTransportLayer(UDPTransportConfig.withDefaults());
         }
 
+        if (pingIntervalInMs == 0) {
+            this.pingIntervalInMs = DEFAULT_PING_INTERVAL_MS;
+        }
+
+        if (pingTimeoutInMs == 0) {
+            this.pingTimeoutInMs = DEFAULT_TIMEOUT_MS;
+        }
+
+        if (indirectPingRequestTimeoutInMs == 0) {
+            this.indirectPingRequestTimeoutInMs = DEFAULT_INDIRECT_PING_REQUEST_TIMEOUT_MS;
+        }
+
         // convert the seed nodes list to an array for easier use in the cluster implementation
         String[] seedNodesArray;
         if (seedNodes.isEmpty()) {
@@ -151,7 +210,8 @@ public class GossipClusterBuilder {
         } else {
             seedNodesArray = seedNodes.toArray(new String[0]);
         }
-        return new StandardGossipClusterImpl(nodeId, port, seedNodesArray, transportLayer, threadFactory, nextMemberSelectionStrategy);
+        return new StandardGossipClusterImpl(nodeId, port, seedNodesArray, transportLayer, threadFactory, nextMemberSelectionStrategy,
+                pingIntervalInMs, pingTimeoutInMs, indirectPingRequestTimeoutInMs);
     }
 
 

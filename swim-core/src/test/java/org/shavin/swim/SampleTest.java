@@ -1,8 +1,8 @@
 package org.shavin.swim;
 
 import org.shavin.swim.api.GossipCluster;
+import org.shavin.swim.api.GossipClusterBuilder;
 import org.shavin.swim.api.event.ClusterEventListener;
-import org.shavin.swim.impl.StandardGossipClusterImpl;
 import org.shavin.swim.api.member.MemberNode;
 
 import java.util.List;
@@ -10,11 +10,11 @@ import java.util.List;
 public class SampleTest {
     public static void main(String[] args) throws InterruptedException {
         // create a GossipCluster
-        GossipCluster gossipCluster1 = new StandardGossipClusterImpl(1, 5002, new String[]{"127.0.0.1:5003"});
-        GossipCluster gossipCluster2 = new StandardGossipClusterImpl(2, 5003, new String[]{});
-        GossipCluster gossipCluster3 = new StandardGossipClusterImpl(3, 5004, new String[]{"127.0.0.1:5005"});
-        GossipCluster gossipCluster4 = new StandardGossipClusterImpl(4, 5005, new String[]{"127.0.0.1:5002"});
-        GossipCluster gossipCluster5 = new StandardGossipClusterImpl(5, 5006, new String[]{"127.0.0.1:5002"});
+        GossipCluster gossipCluster1 = new GossipClusterBuilder().withNodeId(1).onPort(5002).withSeed("127.0.0.1:5003").build();
+        GossipCluster gossipCluster2 = new GossipClusterBuilder().withNodeId(2).onPort(5003).build();
+        GossipCluster gossipCluster3 = new GossipClusterBuilder().withNodeId(3).onPort(5004).withSeed("127.0.0.1:5005").build();
+        GossipCluster gossipCluster4 = new GossipClusterBuilder().withNodeId(4).onPort(5005).withSeed("127.0.0.1:5002").build();
+        GossipCluster gossipCluster5 = new GossipClusterBuilder().withNodeId(5).onPort(5006).withSeed("127.0.0.1:5002").build();
 
         gossipCluster1.addListener(new ClusterEventListener() {
             @Override
@@ -49,17 +49,8 @@ public class SampleTest {
         gossipCluster4.start();
         gossipCluster5.start();
 
-
         Thread.sleep(15000);
-//        System.out.println("SIZED OF MEMBERS LIST");
-//        printMembers(gossipCluster1.getMembers());
-//        printMembers(gossipCluster2.getMembers());
-//        printMembers(gossipCluster3.getMembers());
-//        printMembers(gossipCluster4.getMembers());
-//        printMembers(gossipCluster5.getMembers());
         gossipCluster2.shutdown();
-
-
 
         Thread.sleep(10000);
         System.out.println("SIZED OF MEMBERS LIST");

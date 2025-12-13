@@ -25,7 +25,7 @@ import java.util.concurrent.ScheduledExecutorService;
  */
 public class CustomDataManager {
 
-    private final static int CACHE_PRUNE_INTERVAL_MS = 10000;
+    private final static int CACHE_PRUNE_INTERVAL_MS = 2500;
     private final static int MIN_EFFECTIVE_CLUSTER_SIZE = 10;
     private final static int MAX_SIZE_PER_MESSAGE_IN_BYTES = 256;
     private final static int SAFE_MTU = 1400;
@@ -35,10 +35,13 @@ public class CustomDataManager {
     private final List<ClusterEventListener> listeners;
     private final List<MemberNode> members;
 
-    public CustomDataManager(List<ClusterEventListener> listeners, ScheduledExecutorService executorService, List<MemberNode> members) {
+    public CustomDataManager(List<ClusterEventListener> listeners, List<MemberNode> members) {
         this.listeners = listeners;
         this.members = members;
-//        executorService.scheduleAtFixedRate(seenCache::prune, 0, CACHE_PRUNE_INTERVAL_MS, java.util.concurrent.TimeUnit.MILLISECONDS);
+    }
+
+    public void start(ScheduledExecutorService executorService) {
+        executorService.scheduleAtFixedRate(seenCache::prune, CACHE_PRUNE_INTERVAL_MS, CACHE_PRUNE_INTERVAL_MS, java.util.concurrent.TimeUnit.MILLISECONDS);
     }
 
     private int calculateThreshold() {
