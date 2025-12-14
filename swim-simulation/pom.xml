@@ -22,7 +22,7 @@
         <dependency>
             <groupId>org.shavin</groupId>
             <artifactId>swim</artifactId>
-            <version>0.1.0-SNAPSHOT</version>
+            <version>0.1.0</version>
         </dependency>
 
         <!-- https://mvnrepository.com/artifact/org.junit.jupiter/junit-jupiter-api -->
