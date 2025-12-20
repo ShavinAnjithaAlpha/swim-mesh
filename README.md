@@ -1,5 +1,5 @@
 # SWIM-Mesh
-*A SWIM-protocol–based cluster membership and failure-detection Java library with optional simulation/visualization tools.*
+*A SWIM-protocol–based cluster membership and failure-detection Java library.*
 
 ---
 
